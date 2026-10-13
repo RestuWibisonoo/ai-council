@@ -36,6 +36,7 @@ export const DiscussionDetailPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [isContinuingToDebate, setIsContinuingToDebate] = useState(false);
+  const [isExporting, setIsExporting] = useState<string | null>(null);
   const [selectedStageTab, setSelectedStageTab] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
 
@@ -117,6 +118,18 @@ export const DiscussionDetailPage: React.FC = () => {
     } catch (err: any) {
       alert(err.message || 'Gagal melanjutkan ke AI Debate');
       setIsContinuingToDebate(false);
+    }
+  };
+
+  const handleExport = async (format: 'md' | 'txt' = 'md') => {
+    if (!id) return;
+    setIsExporting(format);
+    try {
+      await api.downloadExportReport(id, format);
+    } catch (err: any) {
+      alert(err.message || 'Gagal mengunduh laporan diskusi');
+    } finally {
+      setIsExporting(null);
     }
   };
 
@@ -263,14 +276,29 @@ export const DiscussionDetailPage: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <a
-            href={api.getExportUrl(run.id)}
-            download
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs font-semibold transition"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Ekspor Laporan</span>
-          </a>
+          {/* Reliable Blob Export Buttons */}
+          <div className="flex items-center rounded-xl bg-slate-900 border border-slate-700 p-0.5 shadow-sm">
+            <button
+              type="button"
+              onClick={() => handleExport('md')}
+              disabled={Boolean(isExporting)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 text-xs font-semibold transition disabled:opacity-50"
+              title="Unduh laporan lengkap dalam format Markdown (.md)"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{isExporting === 'md' ? 'Mengunduh...' : 'Ekspor (.md)'}</span>
+            </button>
+            <div className="w-[1px] h-4 bg-slate-700/80 my-auto" />
+            <button
+              type="button"
+              onClick={() => handleExport('txt')}
+              disabled={Boolean(isExporting)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold transition disabled:opacity-50"
+              title="Unduh laporan lengkap dalam format Plain Text (.txt)"
+            >
+              <span>{isExporting === 'txt' ? 'Mengunduh...' : '(.txt)'}</span>
+            </button>
+          </div>
 
           {/* Parallel mode: Elevate to full debate */}
           {run.mode === 'parallel' && (

@@ -157,9 +157,17 @@ def test_continue_parallel_to_debate(client):
     assert original_check["status"] == "completed"
     assert len(original_check["responses"]) == 2
 
-    # 4. Verify markdown report export includes parallel responses
-    export_res = client.get(f"/api/discussions/{par_run_id}/export")
-    assert export_res.status_code == 200
-    assert "Analisis Mandiri Dewan AI" in export_res.text
-    assert "Jawaban dari chatgpt" in export_res.text
+    # 4. Verify report export (both markdown and txt formats)
+    export_md = client.get(f"/api/discussions/{par_run_id}/export")
+    assert export_md.status_code == 200
+    assert "Analisis Mandiri Dewan AI" in export_md.text
+    assert "Jawaban dari chatgpt" in export_md.text
+    assert "text/markdown" in export_md.headers.get("content-type", "")
+    assert f'filename="ai_council_report_{par_run_id[:8]}.md"' in export_md.headers.get("content-disposition", "")
+
+    export_txt = client.get(f"/api/discussions/{par_run_id}/export?format=txt")
+    assert export_txt.status_code == 200
+    assert "Analisis Mandiri Dewan AI" in export_txt.text
+    assert "text/plain" in export_txt.headers.get("content-type", "")
+    assert f'filename="ai_council_report_{par_run_id[:8]}.txt"' in export_txt.headers.get("content-disposition", "")
 

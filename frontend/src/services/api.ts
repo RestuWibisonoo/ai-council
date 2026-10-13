@@ -282,8 +282,25 @@ export const api = {
     return res.json();
   },
 
-  getExportUrl(runId: string): string {
-    return `${API_BASE}/discussions/${runId}/export`;
+  getExportUrl(runId: string, format: 'md' | 'txt' = 'md'): string {
+    return `${API_BASE}/discussions/${runId}/export?format=${format}`;
+  },
+
+  async downloadExportReport(runId: string, format: 'md' | 'txt' = 'md'): Promise<void> {
+    const res = await fetch(`${API_BASE}/discussions/${runId}/export?format=${format}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Gagal mengunduh laporan diskusi');
+    }
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ai_council_report_${runId.slice(0, 8)}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   },
 
   // Conversations

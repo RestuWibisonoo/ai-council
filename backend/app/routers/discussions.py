@@ -156,13 +156,28 @@ def resume_discussion(run_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{run_id}/export")
-def export_report(run_id: str, db: Session = Depends(get_db)):
+def export_report(
+    run_id: str,
+    format: Optional[str] = "md",
+    db: Session = Depends(get_db)
+):
     try:
-        markdown_text = Orchestrator.generate_markdown_report(db=db, run_id=run_id)
+        report_text = Orchestrator.generate_markdown_report(db=db, run_id=run_id)
+        fmt = (format or "md").lower().strip()
+        if fmt == "txt":
+            media_type = "text/plain; charset=utf-8"
+            filename = f"ai_council_report_{run_id[:8]}.txt"
+        else:
+            media_type = "text/markdown; charset=utf-8"
+            filename = f"ai_council_report_{run_id[:8]}.md"
+
         return PlainTextResponse(
-            content=markdown_text,
-            media_type="text/markdown",
-            headers={"Content-Disposition": f"attachment; filename=ai_council_report_{run_id[:8]}.md"}
+            content=report_text,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Cache-Control": "no-cache"
+            }
         )
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
