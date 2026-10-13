@@ -60,14 +60,15 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
   };
 
   const handlePlaywrightFill = async () => {
+    const rawProvider = (responseItem?.provider || '').toLowerCase();
     const name = providerDisplayName.toLowerCase();
-    const provider = name.includes('gemini') || name.includes('google')
+    const provider = rawProvider.includes('gemini') || name.includes('gemini') || name.includes('google')
       ? 'gemini'
-      : name.includes('claude') || name.includes('anthropic')
+      : rawProvider.includes('claude') || name.includes('claude') || name.includes('anthropic')
         ? 'claude'
-        : name.includes('notebook')
+        : rawProvider.includes('notebook') || name.includes('notebook')
           ? 'notebooklm'
-          : name.includes('chatgpt') || name.includes('openai')
+          : rawProvider.includes('chatgpt') || rawProvider.includes('openai') || name.includes('chatgpt') || name.includes('openai')
             ? 'chatgpt'
             : null;
     if (!provider) {
@@ -86,7 +87,6 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
       if (!response.ok) throw new Error(payload.detail || 'Playwright Bridge gagal membuka browser.');
       setCopied(false);
       setError(null);
-      // A brief inline status tells the user to review and send in the visible browser.
       window.alert(payload.message || 'Prompt dimasukkan. Periksa browser lalu kirim secara manual.');
     } catch (err: any) {
       setError(err.message || 'Playwright Bridge gagal. Pastikan backend lokal dan Chromium sudah disiapkan.');
@@ -169,7 +169,7 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
             </div>
           )}
 
-          {/* Step 1 & 2 Action Row */}
+          {/* Action Row */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               type="button"
@@ -190,20 +190,20 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm bg-indigo-600 hover:bg-indigo-500 text-white transition shadow-sm"
             >
               <ExternalLink className="w-4 h-4" />
-              <span>2. Buka {providerDisplayName} Resmi</span>
+              <span>2. Buka {providerDisplayName}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePlaywrightFill}
+              disabled={autoFilling}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white transition shadow-sm"
+              title="Membuka browser lokal dan mengisi prompt tanpa mengirim otomatis"
+            >
+              <ExternalLink className="w-4 h-4" />
+              <span>{autoFilling ? 'Menyiapkan...' : '3. Isi via Playwright'}</span>
             </button>
           </div>
-
-          <button
-            type="button"
-            onClick={handlePlaywrightFill}
-            disabled={autoFilling}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white transition shadow-sm"
-            title="Membuka browser lokal dan mengisi prompt tanpa mengirim otomatis"
-          >
-            <ExternalLink className="w-4 h-4" />
-            <span>{autoFilling ? 'Menyiapkan browser...' : '3. Isi via Playwright'}</span>
-          </button>
 
           {/* Prompt Preview Box */}
           <div>

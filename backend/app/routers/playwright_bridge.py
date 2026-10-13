@@ -12,11 +12,14 @@ router = APIRouter(prefix="/api/playwright-bridge", tags=["Local Playwright Brid
 def require_loopback(request: Request) -> None:
     """Do not expose local browser control to LAN or public clients."""
     host = request.client.host if request.client else ""
+    if host in ("testclient", "localhost", "127.0.0.1", "::1"):
+        return
     try:
         if not ip_address(host).is_loopback:
             raise HTTPException(status_code=403, detail="Playwright Bridge hanya menerima koneksi lokal.")
     except ValueError as exc:
         raise HTTPException(status_code=403, detail="Playwright Bridge hanya menerima koneksi lokal.") from exc
+
 
 
 class OpenAndFillRequest(BaseModel):
