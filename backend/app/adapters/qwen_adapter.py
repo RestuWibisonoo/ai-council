@@ -13,12 +13,14 @@ class QwenAdapter(BaseAIAdapter):
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         base_url: Optional[str] = None,
-        zero_cost_mode: bool = True
+        zero_cost_mode: bool = True,
+        allow_unverified_free: bool = False
     ):
         super().__init__(api_key=api_key, model=model)
         self.base_url = (base_url or self.DEFAULT_BASE_URL).rstrip("/")
         self.chat_url = f"{self.base_url}/chat/completions"
         self.zero_cost_mode = zero_cost_mode
+        self.allow_unverified_free = allow_unverified_free
 
     def _sanitize_error(self, err_msg: str) -> str:
         if self.api_key and self.api_key in err_msg:
@@ -38,6 +40,18 @@ class QwenAdapter(BaseAIAdapter):
                 content="",
                 model_id=model_name,
                 error="DashScope / Qwen API key belum dikonfigurasi. Atur DASHSCOPE_API_KEY di .env atau Pengaturan Provider."
+            )
+
+        # Enforce Zero-Cost Mode
+        # Alibaba Cloud DashScope free promotional quota cannot be verified via public API endpoints
+        if self.zero_cost_mode and not self.allow_unverified_free:
+            return AdapterResult(
+                content="",
+                model_id=model_name,
+                error=(
+                    "Keamanan Biaya (Zero-Cost Mode): Kuota promosi Alibaba DashScope/Qwen tidak dapat diverifikasi secara otomatis via API. "
+                    "Gunakan model Qwen gratis melalui OpenRouter ('qwen/qwen-2.5-72b-instruct:free') atau nonaktifkan Zero-Cost Mode jika kuota promosi Anda aktif."
+                )
             )
 
         messages = []
@@ -69,11 +83,12 @@ class QwenAdapter(BaseAIAdapter):
                             error="Qwen API mengembalikan respons kosong."
                         )
 
-                    content = choices[0].get("message", {}).get("content", "")
-                    usage = data.get("usage", {})
-                    p_tokens = usage.get("prompt_tokens", 0)
-                    c_tokens = usage.get("completion_tokens", 0)
-                    t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
+                    raw_msg = choices[0].get("message", {}) or {}
+                    content = raw_msg.get("content") or ""
+                    usage = data.get("usage", {}) or {}
+                    p_tokens = usage.get("prompt_tokens") or 0
+                    c_tokens = usage.get("completion_tokens") or 0
+                    t_tokens = usage.get("total_tokens") or (p_tokens + c_tokens)
 
                     return AdapterResult(
                         content=content,

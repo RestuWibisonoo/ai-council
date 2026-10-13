@@ -81,11 +81,12 @@ class DeepSeekAdapter(BaseAIAdapter):
                             error="DeepSeek API mengembalikan respons kosong."
                         )
 
-                    content = choices[0].get("message", {}).get("content", "")
-                    usage = data.get("usage", {})
-                    p_tokens = usage.get("prompt_tokens", 0)
-                    c_tokens = usage.get("completion_tokens", 0)
-                    t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
+                    raw_msg = choices[0].get("message", {}) or {}
+                    content = raw_msg.get("content") or ""
+                    usage = data.get("usage", {}) or {}
+                    p_tokens = usage.get("prompt_tokens") or 0
+                    c_tokens = usage.get("completion_tokens") or 0
+                    t_tokens = usage.get("total_tokens") or (p_tokens + c_tokens)
 
                     return AdapterResult(
                         content=content,

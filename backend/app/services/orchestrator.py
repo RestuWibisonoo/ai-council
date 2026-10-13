@@ -19,6 +19,7 @@ from app.models.all_models import (
 from app.services.prompt_builder import PromptBuilder
 from app.services.document_service import DocumentService
 from app.services.provider_manager import provider_manager
+from app.adapters.openrouter_adapter import OpenRouterAdapter
 from app.config import settings
 
 
@@ -470,58 +471,97 @@ class Orchestrator:
 
             adapter = None
             mod_provider = "moderator"
-            mod_model_id = moderator_model or "google/gemini-2.0-flash-exp:free"
+            mod_model_id = None
 
+            # Strategy 1: User explicitly specified a moderator model
             if moderator_model:
-                adapter = provider_manager.get_adapter(moderator_model, zero_cost_mode=zero_cost_mode)
+                try:
+                    candidate_adapter = provider_manager.get_adapter(moderator_model, zero_cost_mode=zero_cost_mode)
+                    if candidate_adapter:
+                        adapter = candidate_adapter
+                        mod_provider = getattr(candidate_adapter, "provider", "moderator")
+                        mod_model_id = getattr(candidate_adapter, "model", moderator_model)
+                except Exception:
+                    adapter = None
 
+            # Strategy 2: Dynamically query OpenRouter for verified free models from catalog
             if not adapter:
                 or_key = provider_manager.get_secret("openrouter")
                 if or_key:
-                    adapter = provider_manager.get_adapter("openrouter", model=mod_model_id, zero_cost_mode=zero_cost_mode)
-                    mod_provider = "openrouter"
+                    try:
+                        free_models = await OpenRouterAdapter.get_free_models(api_key=or_key)
+                        if free_models:
+                            chosen_model = free_models[0]["id"]
+                            candidate_adapter = provider_manager.get_adapter(
+                                "openrouter",
+                                model=chosen_model,
+                                zero_cost_mode=zero_cost_mode
+                            )
+                            if candidate_adapter:
+                                adapter = candidate_adapter
+                                mod_provider = "openrouter"
+                                mod_model_id = chosen_model
+                    except Exception:
+                        adapter = None
 
+            # Strategy 3: Use an API participant from the council that already succeeded in earlier stages
             if not adapter:
-                gem_key = provider_manager.get_secret("gemini")
-                if gem_key:
-                    adapter = provider_manager.get_adapter("gemini", model="gemini-1.5-flash", zero_cost_mode=zero_cost_mode)
-                    mod_provider = "gemini"
-                    mod_model_id = "gemini-1.5-flash"
-
-            if not adapter:
-                adapter = provider_manager.get_adapter("ollama", model="llama3.2")
-                if adapter:
-                    mod_provider = "ollama"
-                    mod_model_id = "llama3.2"
-
-            if not adapter:
-                successful_res = db.query(ModelResponse).filter_by(
-                    run_id=run.id,
-                    status="completed"
+                successful_res = db.query(ModelResponse).filter(
+                    ModelResponse.run_id == run.id,
+                    ModelResponse.status == "completed",
+                    ModelResponse.provider != "moderator",
+                    ModelResponse.integration_mode == "api"
                 ).first()
-                if successful_res and successful_res.provider != "moderator":
-                    adapter = provider_manager.get_adapter(
-                        successful_res.provider,
-                        model=successful_res.model_id,
-                        zero_cost_mode=zero_cost_mode
-                    )
-                    mod_provider = successful_res.provider
-                    mod_model_id = successful_res.model_id
+                if successful_res and successful_res.model_id:
+                    try:
+                        candidate_adapter = provider_manager.get_adapter(
+                            successful_res.provider,
+                            model=successful_res.model_id,
+                            zero_cost_mode=zero_cost_mode
+                        )
+                        if candidate_adapter:
+                            adapter = candidate_adapter
+                            mod_provider = successful_res.provider
+                            mod_model_id = successful_res.model_id
+                    except Exception:
+                        adapter = None
 
+            # Strategy 4: Local Ollama model if online
+            if not adapter:
+                try:
+                    ollama_adapter = provider_manager.get_adapter("ollama")
+                    if ollama_adapter and hasattr(ollama_adapter, "get_installed_models"):
+                        installed = await ollama_adapter.get_installed_models()
+                        if installed:
+                            chosen_local = installed[0]["id"]
+                            adapter = provider_manager.get_adapter("ollama", model=chosen_local)
+                            mod_provider = "ollama"
+                            mod_model_id = chosen_local
+                except Exception:
+                    adapter = None
+
+            # Strictly reject synthesis in Zero-Cost Mode if no verified free adapter is available
+            # NEVER fallback to paid or unverified models
             if not adapter:
                 synth_resp.status = "failed"
-                synth_resp.error_message = "Tidak ada provider API yang tersedia untuk membuat sintesis otomatis."
+                synth_resp.error_message = (
+                    "Tidak ada model moderator bebas biaya yang terverifikasi untuk sintesis otomatis dalam Zero-Cost Mode. "
+                    "Sesi dialihkan ke awaiting_input agar Anda dapat memasukkan sintesis manual atau mengonfigurasi API model gratis."
+                )
+                run.status = "awaiting_input"
                 db.commit()
                 return
 
             synth_resp.status = "in_progress"
+            synth_resp.provider = mod_provider
             synth_resp.model_id = mod_model_id
             db.commit()
 
         system_prompt = (
             "Anda adalah AI Council Moderator yang netral, teliti, dan objektif. "
             "Tugas Anda merangkum perdebatan antar-model, memetakan kesepakatan (consensus), "
-            "titik perbedaan pendapat (divergence), bukti yang terverifikasi, dan rekomendasi final."
+            "titik perbedaan pendapat (divergence), bukti yang terverifikasi, dan rekomendasi final. "
+            "Gunakan format terstruktur dan jangan mengarang klaim eksternal yang tidak diverifikasi."
         )
 
         result = await adapter.complete(prompt=prompt, system_prompt=system_prompt, timeout=90.0)
@@ -530,15 +570,14 @@ class Orchestrator:
             run = db.query(DiscussionRun).filter_by(id=run_id).first()
             synth_resp = db.query(ModelResponse).filter_by(
                 run_id=run.id,
-                stage="final_synthesis",
-                provider="moderator"
+                stage="final_synthesis"
             ).first()
             if not run or not synth_resp:
                 return
 
             if result.error:
                 synth_resp.status = "failed"
-                synth_resp.error_message = f"Panggilan moderator otomatis gagal: {result.error}"
+                synth_resp.error_message = f"Panggilan model moderator ({mod_provider}:{mod_model_id}) gagal: {result.error}"
                 run.status = "awaiting_input"
                 db.commit()
             else:

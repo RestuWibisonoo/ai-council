@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import PlainTextResponse
@@ -16,6 +18,8 @@ from app.schemas.all_schemas import (
     ConversationDetailOut
 )
 from app.services.orchestrator import Orchestrator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/discussions", tags=["Discussions"])
 
@@ -71,12 +75,24 @@ async def trigger_auto_debate(
     if run.status == "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sesi diskusi telah selesai.")
 
+    # Idempotency / Double-Submit Protection:
+    # If a task is already actively running for this run_id, return the existing run without spawning duplicates
+    existing_task = Orchestrator._active_debate_tasks.get(run.id)
+    if existing_task and not existing_task.done():
+        return run
+
     run.status = "in_progress"
     db.commit()
     db.refresh(run)
 
     task = asyncio.create_task(Orchestrator.run_automated_debate(run.id, zero_cost_mode=True))
     Orchestrator._active_debate_tasks[run.id] = task
+
+    def _on_task_done(t: asyncio.Task):
+        if not t.cancelled() and t.exception():
+            logger.error(f"Auto debate task encountered an error for run {run_id}: {t.exception()}")
+    task.add_done_callback(_on_task_done)
+
     return run
 
 

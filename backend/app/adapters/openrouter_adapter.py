@@ -57,7 +57,10 @@ class OpenRouterAdapter(BaseAIAdapter):
         except Exception:
             pass
 
-        # Return cached if available, else empty list
+        # If refresh failed and existing cache is expired, invalidate cache so stale data is not trusted
+        if cls._models_cache and (now - cls._models_cache_time >= cls.CACHE_TTL_SECONDS):
+            cls._models_cache = None
+
         return cls._models_cache or []
 
     @classmethod
@@ -102,10 +105,11 @@ class OpenRouterAdapter(BaseAIAdapter):
         """Strictly verify pricing metadata before sending request."""
         catalog = await self.get_models_catalog(api_key=self.api_key)
         if not catalog:
-            # If catalog cannot be reached, fallback check: ID must contain :free or specific verified free IDs
-            if ":free" in model_id.lower():
-                return True, "Model memiliki tag :free resmi OpenRouter."
-            return False, f"Katalog OpenRouter tidak dapat dimuat; status harga model '{model_id}' tidak dapat diverifikasi."
+            return (
+                False,
+                f"Katalog harga resmi OpenRouter tidak dapat dimuat dan tidak ada cache valid. "
+                f"Model '{model_id}' ditolak untuk menjamin kepatuhan Zero-Cost Mode ($0.00)."
+            )
 
         matched = next((m for m in catalog if m.get("id") == model_id), None)
         if not matched:
@@ -114,12 +118,22 @@ class OpenRouterAdapter(BaseAIAdapter):
             matched = next((m for m in catalog if m.get("id") == alt_id), None)
 
         if not matched:
-            return False, f"Model '{model_id}' tidak ditemukan di katalog resmi OpenRouter."
+            return (
+                False,
+                f"Model '{model_id}' tidak ditemukan di katalog resmi OpenRouter. "
+                f"Keberadaan dan harga gratis model tidak dapat diverifikasi, ditolak dalam Zero-Cost Mode."
+            )
 
-        pricing = matched.get("pricing", {})
+        pricing = matched.get("pricing")
+        if not isinstance(pricing, dict):
+            return False, f"Metadata harga model '{model_id}' tidak valid atau tidak diketahui. Ditolak dalam Zero-Cost Mode."
+
+        if "prompt" not in pricing or "completion" not in pricing:
+            return False, f"Komponen harga input/output model '{model_id}' tidak lengkap. Ditolak dalam Zero-Cost Mode."
+
         try:
-            p_prompt = float(pricing.get("prompt", 1.0))
-            p_completion = float(pricing.get("completion", 1.0))
+            p_prompt = float(pricing.get("prompt"))
+            p_completion = float(pricing.get("completion"))
             p_request = float(pricing.get("request", 0.0))
             if p_prompt == 0.0 and p_completion == 0.0 and p_request == 0.0:
                 return True, "Harga input dan output terverifikasi 0 (Gratis)."
@@ -189,11 +203,19 @@ class OpenRouterAdapter(BaseAIAdapter):
                                 error="OpenRouter mengembalikan respons kosong (tidak ada choices)."
                             )
 
-                        content = choices[0].get("message", {}).get("content", "")
-                        usage = data.get("usage", {})
-                        p_tokens = usage.get("prompt_tokens", 0)
-                        c_tokens = usage.get("completion_tokens", 0)
-                        t_tokens = usage.get("total_tokens", p_tokens + c_tokens)
+                        raw_msg = choices[0].get("message", {}) or {}
+                        content = raw_msg.get("content") or raw_msg.get("reasoning") or ""
+                        if not content:
+                            return AdapterResult(
+                                content="",
+                                model_id=model_name,
+                                error="OpenRouter mengembalikan respons dengan konten kosong."
+                            )
+
+                        usage = data.get("usage", {}) or {}
+                        p_tokens = usage.get("prompt_tokens") or 0
+                        c_tokens = usage.get("completion_tokens") or 0
+                        t_tokens = usage.get("total_tokens") or (p_tokens + c_tokens)
 
                         return AdapterResult(
                             content=content,

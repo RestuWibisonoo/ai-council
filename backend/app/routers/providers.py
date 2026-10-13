@@ -145,12 +145,18 @@ async def get_models_catalog(db: Session = Depends(get_db)):
                 family = "Qwen / Alibaba"
             elif "llama" in mid:
                 family = "Meta Llama"
-            elif "gemini" in mid:
-                family = "Google Gemini"
+            elif "nemotron" in mid or "nvidia" in mid:
+                family = "NVIDIA Nemotron"
+            elif "gemma" in mid or "gemini" in mid:
+                family = "Google"
             elif "mistral" in mid:
                 family = "Mistral AI"
             elif "glm" in mid:
                 family = "GLM / Zhipu"
+            elif "cohere" in mid:
+                family = "Cohere"
+            elif "liquid" in mid:
+                family = "Liquid AI"
 
             catalog.append({
                 "id": f"openrouter:{m['id']}",

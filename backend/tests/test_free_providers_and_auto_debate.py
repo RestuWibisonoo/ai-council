@@ -9,6 +9,7 @@ from app.models import DiscussionRun, ModelResponse, Synthesis
 from app.adapters.openrouter_adapter import OpenRouterAdapter
 from app.adapters.ollama_adapter import OllamaAdapter
 from app.adapters.deepseek_adapter import DeepSeekAdapter
+from app.adapters.qwen_adapter import QwenAdapter
 from app.services.orchestrator import Orchestrator
 from app.services.provider_manager import provider_manager
 from tests.conftest import TestingSessionLocal
@@ -451,3 +452,111 @@ def test_export_report_markdown_and_txt_with_free_models(client: TestClient, db_
     txt_resp = client.get(f"/api/discussions/{run_id}/export?format=txt")
     assert txt_resp.status_code == 200
     assert "Perbandingan arsitektur Transformer" in txt_resp.text
+
+
+# ---------------------------------------------------------------------------
+# 12. Auto Debate Endpoint: Idempotency and NameError Prevention
+# ---------------------------------------------------------------------------
+def test_auto_debate_endpoint_idempotency_and_no_name_error(client: TestClient, db_session: Session):
+    create_resp = client.post("/api/discussions", json={
+        "mode": "debate",
+        "query": "Uji endpoint auto debate",
+        "selected_providers": ["openrouter:deepseek/deepseek-r1:free"],
+        "max_rounds": 1,
+        "auto_run": False
+    })
+    assert create_resp.status_code == 201
+    run_id = create_resp.json()["id"]
+
+    with patch.object(Orchestrator, "run_automated_debate", AsyncMock()):
+        # First call: triggers debate
+        resp1 = client.post(f"/api/discussions/{run_id}/run-auto")
+        assert resp1.status_code == 200
+        assert resp1.json()["status"] == "in_progress"
+
+        # Second call (double-click): idempotent, does not crash or spawn second task
+        resp2 = client.post(f"/api/discussions/{run_id}/run-auto")
+        assert resp2.status_code == 200
+        assert resp2.json()["status"] == "in_progress"
+
+
+# ---------------------------------------------------------------------------
+# 13. Strict Zero-Cost Mode: Rejects Missing Catalog & Fake Free Models
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_strict_zero_cost_mode_rejects_missing_catalog_and_fake_free():
+    adapter = OpenRouterAdapter(api_key="sk-or-test-key", zero_cost_mode=True)
+    OpenRouterAdapter._models_cache = None
+
+    # When catalog network request fails:
+    with patch("httpx.AsyncClient.get", side_effect=Exception("Network failure")):
+        is_free, reason = await adapter.verify_model_is_free("deepseek/deepseek-r1:free")
+        assert is_free is False
+        assert "tidak dapat dimuat" in reason
+
+    # When model has :free suffix but is NOT in official catalog:
+    mock_catalog = [
+        {"id": "official/free-model", "pricing": {"prompt": "0", "completion": "0"}}
+    ]
+    with patch.object(OpenRouterAdapter, "get_models_catalog", AsyncMock(return_value=mock_catalog)):
+        is_free, reason = await adapter.verify_model_is_free("fabricated/model:free")
+        assert is_free is False
+        assert "tidak ditemukan" in reason
+
+    # Qwen direct adapter rejected in Zero-Cost Mode
+    qwen = QwenAdapter(api_key="qwen-key", zero_cost_mode=True)
+    res = await qwen.complete(prompt="Halo Qwen")
+    assert res.content == ""
+    assert "Keamanan Biaya (Zero-Cost Mode)" in res.error
+
+
+# ---------------------------------------------------------------------------
+# 14. Moderator Selection in Zero-Cost Mode: No Paid Fallback
+# ---------------------------------------------------------------------------
+def test_moderator_selection_zero_cost_rejection_without_paid_fallback(client: TestClient, db_session: Session):
+    create_resp = client.post("/api/discussions", json={
+        "mode": "debate",
+        "query": "Uji moderator Zero-Cost Mode",
+        "selected_providers": ["openrouter:deepseek/deepseek-r1:free"],
+        "max_rounds": 1,
+        "auto_run": False
+    })
+    run_id = create_resp.json()["id"]
+
+    # Set up final synthesis response
+    synth_resp = ModelResponse(
+        run_id=run_id,
+        round_id="dummy-round",
+        provider="moderator",
+        model_id="unknown",
+        stage="final_synthesis",
+        integration_mode="api",
+        prompt_used="Rangkum sintesis dewan",
+        content="",
+        status="pending"
+    )
+    db_session.add(synth_resp)
+    db_session.commit()
+
+    # Simulate environment where NO free moderator is available and NO participants succeeded
+    with patch.object(Orchestrator, "get_db_session", staticmethod(lambda: SessionWrapper(db_session))), \
+         patch("app.services.provider_manager.provider_manager.get_secret", return_value=None), \
+         patch("app.services.provider_manager.provider_manager.get_adapter", return_value=None):
+
+        asyncio.run(
+            Orchestrator._execute_automated_synthesis(
+                run_id=run_id,
+                moderator_model=None,
+                zero_cost_mode=True
+            )
+        )
+
+    db_session.expire_all()
+    updated_synth = db_session.query(ModelResponse).filter_by(run_id=run_id, stage="final_synthesis").first()
+    assert updated_synth.status == "failed"
+    assert "Zero-Cost Mode" in updated_synth.error_message
+
+    # Ensure no fake synthesis was inserted
+    syntheses = db_session.query(Synthesis).filter_by(run_id=run_id).all()
+    assert len(syntheses) == 0
+

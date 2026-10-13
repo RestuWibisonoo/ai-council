@@ -19,10 +19,19 @@ from app.routers import (
 async def lifespan(app: FastAPI):
     # Initialize database tables
     Base.metadata.create_all(bind=engine)
-    # Seed default providers
+    # Seed default providers and recover interrupted runs from previous server restarts
     db = SessionLocal()
     try:
         provider_manager.seed_default_providers(db)
+        from app.models.all_models import DiscussionRun, ModelResponse
+        stale_runs = db.query(DiscussionRun).filter_by(status="in_progress").all()
+        for sr in stale_runs:
+            sr.status = "stopped"
+        stale_resps = db.query(ModelResponse).filter_by(status="in_progress").all()
+        for resp in stale_resps:
+            resp.status = "pending"
+        if stale_runs or stale_resps:
+            db.commit()
     finally:
         db.close()
     yield
