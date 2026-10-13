@@ -43,7 +43,7 @@ Bridge opsional ini membuka browser Chromium yang terlihat dan mengisi prompt ke
 4. Saat pertama kali, login sendiri di jendela Chromium yang terbuka. Klik tombol tersebut lagi setelah login jika prompt belum terisi.
 5. Periksa prompt dan kirim sendiri di halaman provider. Salin jawaban ke kolom respons AI Council untuk melanjutkan alur diskusi.
 
-Profil browser tersimpan lokal di `backend/data/playwright-profile` (direktori `data/` diabaikan Git). Perlakukan profil ini sebagai data privat. Jangan jalankan bridge pada server publik; endpoint dirancang untuk penggunaan lokal tepercaya. Jika UI provider berubah dan kolom pesan tidak ditemukan, gunakan tombol salin/manual yang sudah ada.
+Profil browser tersimpan lokal di `data/playwright-profile` (direktori `data/` diabaikan Git). Perlakukan profil ini sebagai data privat. Jangan jalankan bridge pada server publik; endpoint dirancang untuk penggunaan lokal tepercaya. Jika UI provider berubah dan kolom pesan tidak ditemukan, gunakan tombol salin/manual yang sudah ada.
 
 ## 2. Struktur Repositori
 
