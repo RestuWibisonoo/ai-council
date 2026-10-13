@@ -60,10 +60,10 @@ def delete_document(document_id: str, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dokumen tidak ditemukan.")
 
-    # Remove physical file if exists
+    # Remove physical file if exists and verify strict path containment
     try:
-        file_path = settings.upload_dir / doc.filename
-        if file_path.exists():
+        file_path = (settings.upload_dir / doc.filename).resolve()
+        if file_path.exists() and file_path.is_relative_to(settings.upload_dir.resolve()):
             file_path.unlink()
     except Exception:
         pass

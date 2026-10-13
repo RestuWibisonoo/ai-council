@@ -29,3 +29,13 @@ def test_list_and_update_providers(client):
     test_data = test_res.json()
     assert test_data["success"] is False
     assert "Mode Manual Bridge" in test_data["message"]
+
+
+def test_notebooklm_cannot_set_api_mode(client):
+    res = client.put("/api/providers/notebooklm", json={
+        "default_mode": "api"
+    })
+    assert res.status_code == 400
+    assert "tidak menyediakan api publik" in res.json()["detail"].lower()
+
+

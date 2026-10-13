@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     data_dir: Path = DATA_DIR
     upload_dir: Path = UPLOAD_DIR
     
-    # Limits & Security
+    # Limits & Security (Max 3 debate rounds as mandated)
     max_upload_size_bytes: int = 25 * 1024 * 1024  # 25 MB
     allowed_file_extensions: list[str] = [".pdf", ".txt", ".md"]
-    max_debate_rounds: int = 5
+    max_debate_rounds: int = 3
     default_debate_rounds: int = 2
     api_timeout_seconds: float = 60.0
 

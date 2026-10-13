@@ -34,6 +34,11 @@ def update_provider(
     if payload.is_enabled is not None:
         cfg.is_enabled = payload.is_enabled
     if payload.default_mode is not None:
+        if provider_id == "notebooklm" and payload.default_mode == "api":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="NotebookLM hanya beroperasi via Mode Manual Bridge karena tidak menyediakan API publik untuk akun standar pengguna."
+            )
         if payload.default_mode == "api" and not (payload.api_key or provider_manager.is_api_configured(provider_id)):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

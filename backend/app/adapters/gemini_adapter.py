@@ -13,6 +13,11 @@ class GeminiAdapter(BaseAIAdapter):
         "gemini-1.5-flash": {"input": 0.075, "output": 0.30},
     }
 
+    def _sanitize_error(self, err_msg: str) -> str:
+        if self.api_key and self.api_key in err_msg:
+            return err_msg.replace(self.api_key, "[REDACTED_API_KEY]")
+        return err_msg
+
     async def complete(
         self,
         prompt: str,
@@ -27,7 +32,7 @@ class GeminiAdapter(BaseAIAdapter):
             )
 
         model_name = self.model or self.DEFAULT_MODEL
-        url = f"{self.BASE_URL}/{model_name}:generateContent?key={self.api_key}"
+        url = f"{self.BASE_URL}/{model_name}:generateContent"
 
         contents = []
         if system_prompt:
@@ -35,6 +40,10 @@ class GeminiAdapter(BaseAIAdapter):
             contents.append({"role": "model", "parts": [{"text": "Understood. I will follow your directives."}]})
         contents.append({"role": "user", "parts": [{"text": prompt}]})
 
+        headers = {
+            "x-goog-api-key": self.api_key,
+            "Content-Type": "application/json"
+        }
         payload = {
             "contents": contents,
             "generationConfig": {"temperature": 0.7}
@@ -42,10 +51,11 @@ class GeminiAdapter(BaseAIAdapter):
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                resp = await client.post(url, json=payload)
+                resp = await client.post(url, headers=headers, json=payload)
                 if resp.status_code != 200:
                     err_json = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-                    msg = err_json.get("error", {}).get("message", resp.text)
+                    raw_msg = err_json.get("error", {}).get("message", resp.text)
+                    msg = self._sanitize_error(str(raw_msg))
                     return AdapterResult(
                         content="",
                         model_id=model_name,
@@ -82,20 +92,26 @@ class GeminiAdapter(BaseAIAdapter):
                     is_actual_cost=False
                 )
         except Exception as e:
+            sanitized = self._sanitize_error(str(e))
             return AdapterResult(
                 content="",
                 model_id=model_name,
-                error=f"Koneksi ke Gemini API gagal: {str(e)}"
+                error=f"Koneksi ke Gemini API gagal: {sanitized}"
             )
 
     async def test_connection(self) -> tuple[bool, str]:
         if not self.api_key:
             return False, "API key Gemini belum diisi."
         try:
-            url = f"{self.BASE_URL}/gemini-1.5-flash:generateContent?key={self.api_key}"
+            url = f"{self.BASE_URL}/gemini-1.5-flash:generateContent"
+            headers = {
+                "x-goog-api-key": self.api_key,
+                "Content-Type": "application/json"
+            }
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     url,
+                    headers=headers,
                     json={
                         "contents": [{"parts": [{"text": "ping"}]}]
                     }
@@ -104,4 +120,4 @@ class GeminiAdapter(BaseAIAdapter):
                     return True, "Koneksi ke Google Gemini API berhasil."
                 return False, f"Gemini mengembalikan kode {resp.status_code}"
         except Exception as e:
-            return False, f"Gagal menghubungi server Google Gemini: {str(e)}"
+            return False, f"Gagal menghubungi server Google Gemini: {self._sanitize_error(str(e))}"

@@ -17,6 +17,8 @@ from app.models.all_models import (
 from app.services.prompt_builder import PromptBuilder
 from app.services.document_service import DocumentService
 from app.services.provider_manager import provider_manager
+from app.config import settings
+
 
 
 class Orchestrator:
@@ -32,8 +34,13 @@ class Orchestrator:
         linked_document_ids: Optional[List[str]] = None,
         conversation_title: Optional[str] = None
     ) -> DiscussionRun:
+        query = query.strip()
+        if not query:
+            raise ValueError("Pertanyaan atau topik diskusi tidak boleh kosong.")
+
         selected_providers = selected_providers or ["chatgpt", "claude", "gemini"]
         linked_document_ids = linked_document_ids or []
+        bounded_max_rounds = max(1, min(max_rounds, settings.max_debate_rounds))
 
         # 1. Create or link Conversation
         title = conversation_title or (query[:50] + ("..." if len(query) > 50 else ""))
@@ -67,7 +74,7 @@ class Orchestrator:
             status="awaiting_input",
             current_stage=stage,
             current_round=1,
-            max_rounds=max_rounds,
+            max_rounds=bounded_max_rounds,
             query=query,
             selected_providers=selected_providers,
             linked_document_ids=linked_document_ids
@@ -267,19 +274,26 @@ class Orchestrator:
         if run.mode != "debate":
             raise ValueError("Hanya sesi debat yang memiliki alur tahapan multi-stage.")
 
+        if run.status in ("stopped", "completed"):
+            raise ValueError("Sesi diskusi telah dihentikan atau telah selesai.")
+
         current_stage = run.current_stage
 
         if current_stage == "initial_analysis":
+            # Check that at least one response is completed
+            initial_responses = db.query(ModelResponse).filter_by(
+                run_id=run.id, stage="initial_analysis", status="completed"
+            ).all()
+            if not initial_responses:
+                raise ValueError(
+                    "Belum ada respons analisis awal yang selesai. Harap masukkan setidaknya satu respons sebelum melanjutkan ke kritik silang."
+                )
+
             # Transition to Cross-Critique
             run.current_stage = "cross_critique"
             active_round = db.query(DiscussionRound).filter_by(
                 run_id=run.id, round_number=run.current_round
             ).first()
-
-            # Gather initial responses
-            initial_responses = db.query(ModelResponse).filter_by(
-                run_id=run.id, stage="initial_analysis", status="completed"
-            ).all()
 
             resp_data = [{"provider": r.provider, "content": r.content} for r in initial_responses]
 
@@ -312,6 +326,14 @@ class Orchestrator:
             db.commit()
 
         elif current_stage == "cross_critique":
+            critique_responses = db.query(ModelResponse).filter_by(
+                run_id=run.id, stage="cross_critique", status="completed"
+            ).all()
+            if not critique_responses:
+                raise ValueError(
+                    "Belum ada respons kritik silang yang selesai. Harap selesaikan setidaknya satu kritik sebelum melanjutkan ke sanggahan."
+                )
+
             # Transition to Rebuttal
             run.current_stage = "rebuttal"
             active_round = db.query(DiscussionRound).filter_by(
@@ -321,9 +343,6 @@ class Orchestrator:
             # Gather initial and critiques
             initial_responses = db.query(ModelResponse).filter_by(
                 run_id=run.id, stage="initial_analysis", status="completed"
-            ).all()
-            critique_responses = db.query(ModelResponse).filter_by(
-                run_id=run.id, stage="cross_critique", status="completed"
             ).all()
 
             for r in initial_responses:
@@ -360,6 +379,14 @@ class Orchestrator:
             db.commit()
 
         elif current_stage == "rebuttal":
+            rebuttal_responses = db.query(ModelResponse).filter_by(
+                run_id=run.id, stage="rebuttal", status="completed"
+            ).all()
+            if not rebuttal_responses:
+                raise ValueError(
+                    "Belum ada respons sanggahan yang selesai. Harap selesaikan sanggahan sebelum melanjutkan ke tahap berikutnya."
+                )
+
             # Check if multi-round remains or go to final synthesis
             if run.current_round < run.max_rounds:
                 run.current_round += 1
@@ -412,6 +439,9 @@ class Orchestrator:
                 db.add(synth_resp)
                 db.commit()
 
+        elif current_stage in ("final_synthesis", "completed"):
+            raise ValueError("Sesi debat telah mencapai tahap sintesis akhir dan tidak dapat dimajukan lagi.")
+
         db.refresh(run)
         return run
 
@@ -434,6 +464,8 @@ class Orchestrator:
         run = db.query(DiscussionRun).filter_by(id=run_id).first()
         if not run:
             raise ValueError("Sesi diskusi tidak ditemukan.")
+        if run.status == "stopped":
+            raise ValueError("Sesi diskusi telah dihentikan dan tidak dapat menerima sintesis baru.")
 
         # Create or update Synthesis
         synth = db.query(Synthesis).filter_by(run_id=run.id).first()
@@ -502,6 +534,8 @@ class Orchestrator:
         run = db.query(DiscussionRun).filter_by(id=run_id).first()
         if not run:
             raise ValueError("Sesi diskusi tidak ditemukan.")
+        if run.status == "completed":
+            raise ValueError("Sesi diskusi telah selesai dan tidak dapat dihentikan.")
         run.status = "stopped"
         db.commit()
         db.refresh(run)

@@ -59,3 +59,49 @@ def test_upload_pdf_with_pymupdf(client):
     results = search_res.json()
     assert len(results) >= 1
     assert results[0]["page_number"] == 2
+
+
+def test_upload_empty_file_rejected(client):
+    response = client.post(
+        "/api/documents/upload",
+        files={"file": ("empty.txt", io.BytesIO(b""), "text/plain")},
+        data={"title": "Empty File"}
+    )
+    assert response.status_code == 400
+    assert "kosong" in response.json()["detail"].lower()
+
+
+def test_upload_corrupt_pdf_rejected(client):
+    response = client.post(
+        "/api/documents/upload",
+        files={"file": ("corrupt.pdf", io.BytesIO(b"not a valid pdf content header"), "application/pdf")},
+        data={"title": "Corrupt PDF"}
+    )
+    assert response.status_code == 400
+    assert "file pdf rusak atau tidak dapat dibaca" in response.json()["detail"].lower()
+
+
+def test_delete_document_and_file_cleanup(client):
+    content = "Catatan metodologi riset komparatif."
+    res = client.post(
+        "/api/documents/upload",
+        files={"file": ("metodologi.txt", io.BytesIO(content.encode()), "text/plain")},
+        data={"title": "Metodologi"}
+    )
+    assert res.status_code == 201
+    doc_id = res.json()["id"]
+
+    # Delete the document
+    del_res = client.delete(f"/api/documents/{doc_id}")
+    assert del_res.status_code == 200
+    assert del_res.json()["success"] is True
+
+    # Check search no longer returns it
+    search_res = client.post(
+        "/api/documents/search",
+        params={"query": "metodologi riset komparatif"}
+    )
+    assert search_res.status_code == 200
+    assert len(search_res.json()) == 0
+
+

@@ -14,6 +14,11 @@ class OpenAIAdapter(BaseAIAdapter):
         "o3-mini": {"input": 1.10, "output": 4.40},
     }
 
+    def _sanitize_error(self, err_msg: str) -> str:
+        if self.api_key and self.api_key in err_msg:
+            return err_msg.replace(self.api_key, "[REDACTED_API_KEY]")
+        return err_msg
+
     async def complete(
         self,
         prompt: str,
@@ -48,7 +53,8 @@ class OpenAIAdapter(BaseAIAdapter):
                 resp = await client.post(self.API_URL, headers=headers, json=payload)
                 if resp.status_code != 200:
                     err_json = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-                    msg = err_json.get("error", {}).get("message", resp.text)
+                    raw_msg = err_json.get("error", {}).get("message", resp.text)
+                    msg = self._sanitize_error(str(raw_msg))
                     return AdapterResult(
                         content="",
                         model_id=model_name,
@@ -79,7 +85,7 @@ class OpenAIAdapter(BaseAIAdapter):
             return AdapterResult(
                 content="",
                 model_id=model_name,
-                error=f"Koneksi ke OpenAI API gagal: {str(e)}"
+                error=f"Koneksi ke OpenAI API gagal: {self._sanitize_error(str(e))}"
             )
 
     async def test_connection(self) -> tuple[bool, str]:
@@ -95,4 +101,4 @@ class OpenAIAdapter(BaseAIAdapter):
                     return True, "Koneksi ke OpenAI API berhasil."
                 return False, f"OpenAI mengembalikan kode {resp.status_code}"
         except Exception as e:
-            return False, f"Gagal menghubungi server OpenAI: {str(e)}"
+            return False, f"Gagal menghubungi server OpenAI: {self._sanitize_error(str(e))}"

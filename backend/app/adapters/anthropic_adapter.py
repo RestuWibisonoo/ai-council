@@ -14,6 +14,11 @@ class AnthropicAdapter(BaseAIAdapter):
         "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
     }
 
+    def _sanitize_error(self, err_msg: str) -> str:
+        if self.api_key and self.api_key in err_msg:
+            return err_msg.replace(self.api_key, "[REDACTED_API_KEY]")
+        return err_msg
+
     async def complete(
         self,
         prompt: str,
@@ -46,7 +51,8 @@ class AnthropicAdapter(BaseAIAdapter):
                 resp = await client.post(self.API_URL, headers=headers, json=payload)
                 if resp.status_code != 200:
                     err_json = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-                    msg = err_json.get("error", {}).get("message", resp.text)
+                    raw_msg = err_json.get("error", {}).get("message", resp.text)
+                    msg = self._sanitize_error(str(raw_msg))
                     return AdapterResult(
                         content="",
                         model_id=model_name,
@@ -77,14 +83,13 @@ class AnthropicAdapter(BaseAIAdapter):
             return AdapterResult(
                 content="",
                 model_id=model_name,
-                error=f"Koneksi ke Anthropic API gagal: {str(e)}"
+                error=f"Koneksi ke Anthropic API gagal: {self._sanitize_error(str(e))}"
             )
 
     async def test_connection(self) -> tuple[bool, str]:
         if not self.api_key:
             return False, "API key Anthropic belum diisi."
         try:
-            # Send minimal 1-token test message
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     self.API_URL,
@@ -103,4 +108,4 @@ class AnthropicAdapter(BaseAIAdapter):
                     return True, "Koneksi ke Anthropic API berhasil."
                 return False, f"Anthropic mengembalikan kode {resp.status_code}"
         except Exception as e:
-            return False, f"Gagal menghubungi server Anthropic: {str(e)}"
+            return False, f"Gagal menghubungi server Anthropic: {self._sanitize_error(str(e))}"

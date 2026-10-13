@@ -27,6 +27,9 @@ class DocumentService:
         project_id: Optional[str] = None,
         title: Optional[str] = None
     ) -> Document:
+        if not file_bytes or len(file_bytes) == 0:
+            raise ValueError("File kosong (0 bytes). Harap unggah file yang valid.")
+
         file_ext = Path(original_filename).suffix.lower()
         if file_ext not in settings.allowed_file_extensions:
             raise ValueError(
@@ -39,7 +42,11 @@ class DocumentService:
 
         doc_id = str(uuid.uuid4())
         safe_name = f"{doc_id}_{cls.sanitize_filename(original_filename)}"
-        saved_path = settings.upload_dir / safe_name
+        saved_path = (settings.upload_dir / safe_name).resolve()
+
+        # Strict path traversal check
+        if not saved_path.is_relative_to(settings.upload_dir.resolve()):
+            raise ValueError("Nama file tidak aman atau terdeteksi path traversal.")
 
         with open(saved_path, "wb") as f:
             f.write(file_bytes)
@@ -47,8 +54,17 @@ class DocumentService:
         display_title = title.strip() if title and title.strip() else Path(original_filename).stem
         file_type = file_ext.replace(".", "")
 
-        # Extract text pages
-        pages_content = cls.extract_text_by_pages(saved_path, file_type)
+        # Extract text pages with robust error handling
+        try:
+            pages_content = cls.extract_text_by_pages(saved_path, file_type)
+        except Exception as e:
+            if saved_path.exists():
+                try:
+                    saved_path.unlink()
+                except Exception:
+                    pass
+            raise ValueError(f"Gagal mengekstrak konten dokumen: {str(e)}")
+
         total_pages = len(pages_content) if pages_content else 1
 
         doc = Document(
@@ -94,18 +110,25 @@ class DocumentService:
     def extract_text_by_pages(cls, file_path: Path, file_type: str) -> List[tuple[int, str]]:
         pages = []
         if file_type == "pdf":
-            doc = fitz.open(file_path)
-            for page_index in range(len(doc)):
-                page = doc[page_index]
-                text = page.get_text("text")
-                pages.append((page_index + 1, text))
-            doc.close()
+            try:
+                doc = fitz.open(file_path)
+            except Exception as e:
+                raise ValueError(f"File PDF rusak atau tidak dapat dibaca: {str(e)}")
+            try:
+                for page_index in range(len(doc)):
+                    page = doc[page_index]
+                    text = page.get_text("text")
+                    pages.append((page_index + 1, text))
+            finally:
+                doc.close()
         else:
             # Plain text or Markdown
-            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                content = f.read()
-            # If multiple markers exist or just treat as page 1
-            pages.append((1, content))
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                pages.append((1, content))
+            except Exception as e:
+                raise ValueError(f"Gagal membaca file teks: {str(e)}")
         return pages
 
     @staticmethod

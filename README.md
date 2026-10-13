@@ -77,7 +77,7 @@ ai-council/
 
 ### Langkah 1: Kloning & Masuk ke Folder Proyek
 ```bash
-git clone <url-repo-anda> ai-council
+git clone https://github.com/RestuWibisonoo/ai-council.git
 cd ai-council
 ```
 
@@ -119,9 +119,9 @@ Frontend web siap diakses di peramban (browser) Anda: **`http://127.0.0.1:5173`*
 
 Jika ingin menjalankan aplikasi secara terisolasi atau di server Linux:
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
-Aplikasi frontend akan tersedia di `http://localhost:5173` dan backend di `http://localhost:8000`. Data persisten tersimpan aman di folder `./data`.
+Aplikasi frontend akan tersedia di `http://127.0.0.1:5173` dan backend di `http://127.0.0.1:8000`. Port dibatasi hanya dapat diakses melalui localhost demi keamanan. Data persisten tersimpan aman di folder `./data`.
 
 ---
 
@@ -161,17 +161,20 @@ Aplikasi frontend akan tersedia di `http://localhost:5173` dan backend di `http:
 
 ---
 
-## 7. Konfigurasi Provider (Mode Manual vs API)
+## 7. Konfigurasi Provider: Membedakan Layanan Web & Model API
 
-Buka menu **Pengaturan Provider** (`/providers`):
-- **ChatGPT**: URL resmi `https://chatgpt.com`. Model: `gpt-4o`, `gpt-4o-mini`, `o3-mini`.
-- **Claude**: URL resmi `https://claude.ai`. Model: `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`.
-- **Gemini**: URL resmi `https://gemini.google.com`. Model: `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-flash`.
-- **NotebookLM**: URL resmi `https://notebooklm.google.com`. Model: `NotebookLM Research Workspace`.
+Penting dipahami bahwa **langganan antarmuka web tidak otomatis memberikan akses API**. AI Council membedakan keduanya secara tegas:
 
-> **Status Fitur:**
-> - **Berfungsi Penuh Tanpa API Key**: Seluruh fitur perbandingan paralel, debat multi-putaran, ekstraksi PDF PyMuPDF, pencarian kutipan, dan ekspor laporan Markdown berjalan 100% via **Manual Bridge**.
-> - **Memerlukan API Key**: Fitur auto-completion langsung di latar belakang (Mode B) hanya aktif jika Anda memasukkan API key resmi pada provider terkait.
+| Provider | Akun / Antarmuka Web (Mode A: Manual) | Model API Resmi (Mode B: Optional API) | Status Integrasi |
+| :--- | :--- | :--- | :--- |
+| **ChatGPT** | ChatGPT Go, ChatGPT Free, ChatGPT Plus (`https://chatgpt.com`) | `gpt-4o`, `gpt-4o-mini`, `o3-mini` | Manual Bridge aktif; API opsional jika memiliki API key |
+| **Claude** | Claude Free, Claude Pro (`https://claude.ai`) | `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022` | Manual Bridge aktif; API opsional jika memiliki API key |
+| **Gemini** | Gemini Pro Web, Gemini Free, Advanced (`https://gemini.google.com`) | `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-flash` | Manual Bridge aktif; API opsional jika memiliki API key |
+| **NotebookLM** | Akun pengguna pribadi (`https://notebooklm.google.com`) | *Tidak tersedia API publik untuk akun standar* | Eksklusif via Manual Bridge (100% Gratis) |
+
+> **Catatan Transparansi Biaya:**
+> - Pada **Mode A (Manual Bridge)**, token yang ditampilkan adalah estimasi volume teks untuk referensi pengguna. Biaya API adalah **Rp 0** dan tidak ada biaya tagihan ke pengguna.
+> - Pada **Mode B (Official API)**, token dilaporkan sesuai metadata resmi provider dan estimasi biaya dihitung berdasarkan tarif per 1M token resmi.
 
 ---
 

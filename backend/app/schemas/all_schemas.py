@@ -223,7 +223,7 @@ class DiscussionCreateRequest(BaseModel):
     query: str = Field(..., min_length=1)
     mode: str = "parallel"  # "parallel" | "debate" | "research"
     selected_providers: List[str] = Field(default=["chatgpt", "claude", "gemini"])
-    max_rounds: int = 2
+    max_rounds: int = Field(default=2, ge=1, le=3)
     project_id: Optional[str] = None
     linked_document_ids: List[str] = Field(default_factory=list)
     conversation_title: Optional[str] = None
