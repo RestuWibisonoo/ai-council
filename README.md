@@ -24,6 +24,27 @@ Aplikasi ini dirancang khusus untuk berjalan secara lokal di Mac (Apple Silicon 
 
 ---
 
+
+## Auto Copy-Paste Bridge (Playwright lokal)
+
+Bridge opsional ini membuka browser Chromium yang terlihat dan mengisi prompt ke antarmuka resmi ChatGPT, Gemini, Claude, atau NotebookLM. Bridge **tidak mengirim prompt otomatis**: periksa isi prompt lalu klik tombol kirim sendiri. Login dilakukan manual di situs resmi; aplikasi tidak mengambil cookie, token, atau melewati autentikasi.
+
+### Setup lokal
+
+1. Jalankan backend dari mesin desktop yang memiliki sesi grafis aktif (bukan container/headless server):
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   python -m playwright install chromium
+   python run.py
+   ```
+2. Jalankan frontend seperti biasa dari `frontend` dengan `npm install` dan `npm run dev`.
+3. Buka Manual Bridge pada respons diskusi, lalu pilih **Isi via Playwright**.
+4. Saat pertama kali, login sendiri di jendela Chromium yang terbuka. Klik tombol tersebut lagi setelah login jika prompt belum terisi.
+5. Periksa prompt dan kirim sendiri di halaman provider. Salin jawaban ke kolom respons AI Council untuk melanjutkan alur diskusi.
+
+Profil browser tersimpan lokal di `backend/data/playwright-profile` (direktori `data/` diabaikan Git). Perlakukan profil ini sebagai data privat. Jangan jalankan bridge pada server publik; endpoint dirancang untuk penggunaan lokal tepercaya. Jika UI provider berubah dan kolom pesan tidak ditemukan, gunakan tombol salin/manual yang sudah ada.
+
 ## 2. Struktur Repositori
 
 ```text
