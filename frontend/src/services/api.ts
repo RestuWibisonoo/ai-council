@@ -85,7 +85,7 @@ export interface DiscussionRun {
   conversation_id: string;
   mode: 'parallel' | 'debate' | 'research';
   status: 'pending' | 'in_progress' | 'awaiting_input' | 'completed' | 'failed' | 'stopped';
-  current_stage: 'initial_analysis' | 'cross_critique' | 'rebuttal' | 'final_synthesis' | 'completed';
+  current_stage: 'parallel_analysis' | 'initial_analysis' | 'cross_critique' | 'rebuttal' | 'final_synthesis' | 'completed';
   current_round: number;
   max_rounds: number;
   query: string;
@@ -271,6 +271,16 @@ export const api = {
     return res.json();
   },
 
+  async continueToDebate(runId: string): Promise<DiscussionRun> {
+    const res = await fetch(`${API_BASE}/discussions/${runId}/continue-to-debate`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Gagal melanjutkan ke AI Debate');
+    }
+    return res.json();
+  },
 
   getExportUrl(runId: string): string {
     return `${API_BASE}/discussions/${runId}/export`;

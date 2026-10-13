@@ -8,7 +8,9 @@ import {
   AlertTriangle,
   Clock,
   Sparkles,
-  Cpu
+  Cpu,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { ModelResponse } from '../services/api';
 
@@ -23,7 +25,10 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
   officialUrl,
   onOpenManualBridge,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [copiedContent, setCopiedContent] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [isAutoFilling, setIsAutoFilling] = useState(false);
+  const [showPromptPreview, setShowPromptPreview] = useState(false);
 
   const getProviderTheme = (provider: string) => {
     switch (provider.toLowerCase()) {
@@ -71,9 +76,54 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
     if (!response.content) return;
     try {
       await navigator.clipboard.writeText(response.content);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedContent(true);
+      setTimeout(() => setCopiedContent(false), 2000);
     } catch {}
+  };
+
+  const handleCopyPrompt = async () => {
+    if (!response.prompt_used) return;
+    try {
+      await navigator.clipboard.writeText(response.prompt_used);
+      setCopiedPrompt(true);
+      setTimeout(() => setCopiedPrompt(false), 2000);
+    } catch {}
+  };
+
+  const handleOpenOfficial = () => {
+    window.open(officialUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handlePlaywrightFill = async () => {
+    const rawProvider = (response.provider || '').toLowerCase();
+    const provider = rawProvider.includes('gemini') || rawProvider.includes('google')
+      ? 'gemini'
+      : rawProvider.includes('claude') || rawProvider.includes('anthropic')
+        ? 'claude'
+        : rawProvider.includes('notebook')
+          ? 'notebooklm'
+          : rawProvider.includes('chatgpt') || rawProvider.includes('openai')
+            ? 'chatgpt'
+            : null;
+    if (!provider) {
+      alert('Provider ini belum didukung oleh Playwright Bridge.');
+      return;
+    }
+    setIsAutoFilling(true);
+    try {
+      const res = await fetch('/api/playwright-bridge/open-fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, prompt: response.prompt_used || '' }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || 'Playwright Bridge gagal membuka browser.');
+      alert(data.message || 'Prompt dimasukkan. Periksa browser lalu kirim secara manual.');
+    } catch (err: any) {
+      alert(err.message || 'Playwright Bridge gagal. Pastikan backend lokal dan browser sudah siap.');
+    } finally {
+      setIsAutoFilling(false);
+    }
   };
 
   return (
@@ -123,34 +173,103 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
       </div>
 
       {/* Content Area */}
-      <div className="p-5 flex-1 min-h-[200px] flex flex-col justify-between">
+      <div className="p-5 flex-1 min-h-[220px] flex flex-col justify-between">
         {response.status === 'completed' ? (
-          <div className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans">
-            {response.content}
+          <div className="space-y-3">
+            <div className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans">
+              {response.content}
+            </div>
           </div>
         ) : response.status === 'failed' ? (
-          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
-            <p className="font-semibold mb-1">Terjadi kesalahan pada provider:</p>
-            <p>{response.error_message || 'Gagal memproses respons.'}</p>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-center px-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-slate-400 mb-3">
-              <Edit3 className="w-6 h-6 text-emerald-400" />
+          <div className="space-y-4 my-auto py-4">
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+              <p className="font-semibold mb-1">Terjadi kesalahan pada provider:</p>
+              <p>{response.error_message || 'Gagal memproses respons.'}</p>
             </div>
-            <h4 className="text-sm font-semibold text-slate-200 mb-1">
-              Respons Belum Dimasukkan
-            </h4>
-            <p className="text-xs text-slate-400 max-w-xs mb-4">
-              Buka {theme.name} resmi, tempelkan prompt yang telah disiapkan sistem, lalu salin kembali jawabannya.
-            </p>
             <button
               onClick={() => onOpenManualBridge(response)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-medium bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-lg shadow-emerald-600/20"
+              className="w-full py-2.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 transition border border-slate-700"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>Buka Manual Bridge & Salin Prompt</span>
+              Coba Isi Ulang Manual
             </button>
+          </div>
+        ) : (
+          /* Pending / Awaiting input state */
+          <div className="flex flex-col justify-between h-full space-y-4 py-2">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-amber-300/90 uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  Menunggu Jawaban
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowPromptPreview(!showPromptPreview)}
+                  className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1"
+                >
+                  <span>{showPromptPreview ? 'Sembunyikan Prompt' : 'Lihat Teks Prompt'}</span>
+                  {showPromptPreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+
+              {showPromptPreview && (
+                <div className="p-3 mb-3 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 text-[11px] font-mono whitespace-pre-wrap max-h-36 overflow-y-auto leading-relaxed select-all">
+                  {response.prompt_used}
+                </div>
+              )}
+
+              <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                Prompt telah disiapkan. Salin prompt, tempelkan ke {theme.name} resmi atau gunakan Playwright bridge, lalu tempel jawabannya ke sini.
+              </p>
+
+              {/* 3 Quick Step Action Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                <button
+                  type="button"
+                  onClick={handleCopyPrompt}
+                  className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition border ${
+                    copiedPrompt
+                      ? 'bg-emerald-600 text-white border-emerald-500'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                  }`}
+                  title="Salin teks prompt ke clipboard"
+                >
+                  {copiedPrompt ? <Check className="w-3.5 h-3.5 text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedPrompt ? 'Disalin!' : '1. Salin'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenOfficial}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+                  title={`Buka situs resmi ${theme.name}`}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>2. Buka Web</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handlePlaywrightFill}
+                  disabled={isAutoFilling}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-violet-600/30 hover:bg-violet-600/40 text-violet-300 border border-violet-500/40 transition disabled:opacity-50"
+                  title="Isi prompt ke browser Playwright tanpa kirim otomatis"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{isAutoFilling ? 'Proses...' : '3. Playwright'}</span>
+                </button>
+              </div>
+
+              {/* Main Submit Button */}
+              <button
+                type="button"
+                onClick={() => onOpenManualBridge(response)}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-md shadow-emerald-600/20"
+              >
+                <Edit3 className="w-4 h-4" />
+                <span>4. Tempel & Simpan Respons</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -181,7 +300,7 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
                 className="p-1.5 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
                 title="Salin jawaban ini"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copiedContent ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
               </button>
             )}
             <button

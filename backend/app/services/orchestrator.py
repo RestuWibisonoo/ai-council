@@ -222,7 +222,7 @@ class Orchestrator:
             raise ValueError("Sesi diskusi terkait tidak ditemukan.")
         if run.status == "stopped":
             raise ValueError("Sesi diskusi sedang dihentikan (stopped). Silakan lanjutkan (resume) sesi terlebih dahulu sebelum menambahkan respons.")
-        if run.status == "completed":
+        if run.status == "completed" and run.mode != "parallel":
             raise ValueError("Sesi diskusi telah selesai dan tidak dapat diubah lagi.")
 
         clean_content = content.strip()
@@ -262,7 +262,9 @@ class Orchestrator:
 
     @classmethod
     def _update_run_status(cls, db: Session, run: DiscussionRun):
-        if run.status in ("stopped", "completed"):
+        if run.status == "stopped":
+            return
+        if run.status == "completed" and run.mode != "parallel":
             return
 
         responses = db.query(ModelResponse).filter_by(run_id=run.id, stage=run.current_stage).all()
@@ -302,12 +304,119 @@ class Orchestrator:
         return run
 
     @classmethod
+    def continue_to_debate(cls, db: Session, run_id: str) -> DiscussionRun:
+        parallel_run = db.query(DiscussionRun).filter_by(id=run_id).first()
+        if not parallel_run:
+            raise ValueError("Sesi diskusi tidak ditemukan.")
+        if parallel_run.mode != "parallel":
+            raise ValueError("Fitur 'Lanjutkan ke AI Debate' hanya berlaku untuk sesi mode parallel.")
+
+        bounded_max_rounds = min(max(settings.max_debate_rounds, 1), 3)
+
+        debate_run = DiscussionRun(
+            conversation_id=parallel_run.conversation_id,
+            mode="debate",
+            status="awaiting_input",
+            current_stage="initial_analysis",
+            current_round=1,
+            max_rounds=bounded_max_rounds,
+            query=parallel_run.query,
+            selected_providers=parallel_run.selected_providers,
+            linked_document_ids=parallel_run.linked_document_ids or []
+        )
+        db.add(debate_run)
+        db.flush()
+
+        # Copy document references if any
+        existing_refs = db.query(SourceReference).filter_by(run_id=parallel_run.id).all()
+        for ref in existing_refs:
+            db.add(SourceReference(
+                run_id=debate_run.id,
+                document_id=ref.document_id,
+                chunk_id=ref.chunk_id,
+                quote=ref.quote,
+                page_number=ref.page_number,
+                relevance_score=ref.relevance_score,
+                is_verified=ref.is_verified,
+                source_type=ref.source_type
+            ))
+
+        round_1 = DiscussionRound(
+            run_id=debate_run.id,
+            round_number=1,
+            stage="initial_analysis",
+            status="in_progress"
+        )
+        db.add(round_1)
+        db.flush()
+
+        doc_chunks = []
+        if parallel_run.linked_document_ids:
+            doc_chunks = DocumentService.search_relevant_chunks(
+                db, query=parallel_run.query, document_ids=parallel_run.linked_document_ids, top_k=5
+            )
+
+        parallel_responses = {
+            r.provider: r for r in parallel_run.responses if r.provider != "moderator"
+        }
+
+        for pid in debate_run.selected_providers:
+            provider_cfg = db.query(ProviderConfiguration).filter_by(id=pid).first()
+            model_id = provider_cfg.selected_model if provider_cfg else pid
+            is_api = bool(provider_cfg and provider_cfg.default_mode == "api" and provider_manager.is_api_configured(pid))
+
+            prompt = PromptBuilder.build_initial_debate_prompt(
+                query=debate_run.query,
+                provider=pid,
+                round_number=1,
+                document_chunks=doc_chunks
+            )
+
+            par_resp = parallel_responses.get(pid)
+            if par_resp and par_resp.status == "completed" and par_resp.content.strip():
+                resp = ModelResponse(
+                    run_id=debate_run.id,
+                    round_id=round_1.id,
+                    provider=pid,
+                    model_id=par_resp.model_id or model_id,
+                    stage="initial_analysis",
+                    integration_mode=par_resp.integration_mode,
+                    prompt_used=prompt,
+                    content=par_resp.content,
+                    status="completed",
+                    completion_tokens=par_resp.completion_tokens,
+                    total_tokens=par_resp.total_tokens,
+                    estimated_cost_usd=par_resp.estimated_cost_usd
+                )
+            else:
+                resp = ModelResponse(
+                    run_id=debate_run.id,
+                    round_id=round_1.id,
+                    provider=pid,
+                    model_id=model_id,
+                    stage="initial_analysis",
+                    integration_mode="api" if is_api else "manual",
+                    prompt_used=prompt,
+                    content="",
+                    status="pending"
+                )
+            db.add(resp)
+
+        db.commit()
+        db.refresh(debate_run)
+        cls._update_run_status(db, debate_run)
+        return debate_run
+
+    @classmethod
     async def advance_debate_stage(cls, db: Session, run_id: str) -> DiscussionRun:
         run = db.query(DiscussionRun).filter_by(id=run_id).first()
         if not run:
             raise ValueError("Sesi diskusi tidak ditemukan.")
         if run.mode != "debate":
-            raise ValueError("Hanya sesi debat yang memiliki alur tahapan multi-stage.")
+            raise ValueError(
+                "Mode 'parallel' adalah analisis perbandingan langsung satu tahap dan tidak memiliki alur advance debat. "
+                "Gunakan fitur 'Lanjutkan ke AI Debate' untuk memulai debat multi-tahap."
+            )
 
         if run.status != "awaiting_input":
             raise ValueError(f"Hanya sesi dengan status 'awaiting_input' yang dapat dimajukan (status saat ini: '{run.status}').")
@@ -661,8 +770,9 @@ class Orchestrator:
         if not completed_debaters and not any(r.status == "failed" for r in debater_responses):
             lines.append("\n*Catatan: Belum ada respons peserta dewan yang diselesaikan sebelum laporan ini dibuat.*")
         else:
-            stage_order = ["initial_analysis", "cross_critique", "rebuttal"]
+            stage_order = ["parallel_analysis", "initial_analysis", "cross_critique", "rebuttal"]
             stage_names = {
+                "parallel_analysis": "Analisis Mandiri Dewan AI (Parallel Analysis)",
                 "initial_analysis": "Tahap 1: Analisis Awal (Initial Analysis)",
                 "cross_critique": "Tahap 2: Kritik Silang Antarmodel (Cross-Critique)",
                 "rebuttal": "Tahap 3: Sanggahan & Pembelaan (Rebuttal)"

@@ -94,6 +94,17 @@ async def advance_debate(run_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
+@router.post("/{run_id}/continue-to-debate", response_model=DiscussionRunOut, status_code=status.HTTP_201_CREATED)
+def continue_to_debate(run_id: str, db: Session = Depends(get_db)):
+    try:
+        debate_run = Orchestrator.continue_to_debate(db=db, run_id=run_id)
+        return debate_run
+    except ValueError as ve:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
 @router.post("/{run_id}/synthesis")
 def submit_synthesis(
     run_id: str,

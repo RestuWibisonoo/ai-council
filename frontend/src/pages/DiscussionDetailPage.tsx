@@ -12,7 +12,8 @@ import {
   Clock,
   Sparkles,
   RefreshCw,
-  AlertCircle
+  AlertCircle,
+  Flame
 } from 'lucide-react';
 import {
   api,
@@ -34,6 +35,8 @@ export const DiscussionDetailPage: React.FC = () => {
   const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdvancing, setIsAdvancing] = useState(false);
+  const [isContinuingToDebate, setIsContinuingToDebate] = useState(false);
+  const [selectedStageTab, setSelectedStageTab] = useState<string>('all');
   const [error, setError] = useState<string | null>(null);
 
   // Modal states
@@ -102,6 +105,18 @@ export const DiscussionDetailPage: React.FC = () => {
       alert(err.message || 'Gagal melanjutkan tahapan');
     } finally {
       setIsAdvancing(false);
+    }
+  };
+
+  const handleContinueToDebate = async () => {
+    if (!id) return;
+    setIsContinuingToDebate(true);
+    try {
+      const debateRun = await api.continueToDebate(id);
+      navigate(`/discussions/${debateRun.id}`);
+    } catch (err: any) {
+      alert(err.message || 'Gagal melanjutkan ke AI Debate');
+      setIsContinuingToDebate(false);
     }
   };
 
@@ -180,12 +195,21 @@ export const DiscussionDetailPage: React.FC = () => {
   };
 
   // Debater models only (exclude moderator placeholder from debater responses)
-  const currentStageResponses = run.responses.filter(
-    (r) => r.provider !== 'moderator' && (r.stage === run.current_stage || run.mode === 'parallel')
-  );
+  const debaterResponses = (run.responses || []).filter((r) => r.provider !== 'moderator');
 
-  const completedInCurrentStage = currentStageResponses.filter((r) => r.status === 'completed');
-  const hasMinimumResponses = completedInCurrentStage.length > 0;
+  const currentStageResponses = debaterResponses.filter((r) => {
+    if (run.mode === 'parallel') return true;
+    if (selectedStageTab !== 'all') return r.stage === selectedStageTab;
+    if (run.current_stage === 'completed' || run.current_stage === 'final_synthesis') return true;
+    return r.stage === run.current_stage;
+  });
+
+  const availableStages = Array.from(new Set(debaterResponses.map((r) => r.stage)));
+
+  const completedCount = currentStageResponses.filter((r) => r.status === 'completed').length;
+  const hasMinimumResponses = debaterResponses.filter((r) =>
+    (run.mode === 'parallel' ? true : r.stage === run.current_stage) && r.status === 'completed'
+  ).length > 0;
 
   const canAdvanceStage =
     run.mode === 'debate' &&
@@ -193,9 +217,7 @@ export const DiscussionDetailPage: React.FC = () => {
     run.current_stage !== 'final_synthesis' &&
     run.status === 'awaiting_input';
 
-  const anyResponseCompletedInRun = run.responses.some(
-    (r) => r.provider !== 'moderator' && r.status === 'completed'
-  );
+  const anyResponseCompletedInRun = debaterResponses.some((r) => r.status === 'completed');
 
   // Get active synthesis prompt for modal
   const synthesisPlaceholderResp = run.responses.find((r) => r.stage === 'final_synthesis');
@@ -249,6 +271,19 @@ export const DiscussionDetailPage: React.FC = () => {
             <Download className="w-3.5 h-3.5" />
             <span>Ekspor Laporan</span>
           </a>
+
+          {/* Parallel mode: Elevate to full debate */}
+          {run.mode === 'parallel' && (
+            <button
+              onClick={handleContinueToDebate}
+              disabled={isContinuingToDebate}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-amber-500/20 disabled:opacity-50"
+              title="Lanjutkan analisis awal ini ke sesi AI Debate untuk kritik silang antarmodel"
+            >
+              <Flame className="w-3.5 h-3.5 fill-current" />
+              <span>{isContinuingToDebate ? 'Menyiapkan Debat...' : 'Lanjutkan ke AI Debate'}</span>
+            </button>
+          )}
 
           {run.status !== 'completed' && run.status !== 'stopped' && (
             <button
@@ -320,6 +355,25 @@ export const DiscussionDetailPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Parallel Mode Info Banner */}
+      {run.mode === 'parallel' && (
+        <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>
+              <strong>Mode Parallel Chat:</strong> Membandingkan jawaban mandiri setiap model dewan. Gunakan tombol <strong>Lanjutkan ke AI Debate</strong> untuk membawa hasil ini ke kritik silang dan sintesis akhir.
+            </span>
+          </div>
+          <button
+            onClick={handleContinueToDebate}
+            disabled={isContinuingToDebate}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition shrink-0 shadow-md shadow-amber-500/20"
+          >
+            <Flame className="w-3.5 h-3.5 fill-current" />
+            <span>{isContinuingToDebate ? 'Memproses...' : 'Lanjutkan ke AI Debate →'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Debate Timeline (If in Debate Mode) */}
       {run.mode === 'debate' && (
@@ -348,7 +402,7 @@ export const DiscussionDetailPage: React.FC = () => {
         </div>
       )}
 
-      {/* Model Responses Grid */}
+      {/* Model Responses Section */}
       <div>
         {!hasMinimumResponses && run.mode === 'debate' && run.current_stage !== 'final_synthesis' && run.status === 'awaiting_input' && (
           <div className="p-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
@@ -357,30 +411,74 @@ export const DiscussionDetailPage: React.FC = () => {
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
-            Respons Dewan AI ({run.current_stage.replace('_', ' ')})
-          </h3>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
+              {run.mode === 'parallel'
+                ? 'Respons Dewan AI (Parallel Analysis)'
+                : `Respons Dewan AI (${(selectedStageTab === 'all' ? run.current_stage : selectedStageTab).replace('_', ' ')})`}
+            </h3>
+
+            {/* Stage filter pills for debate mode if multiple stages exist */}
+            {run.mode === 'debate' && availableStages.length > 1 && (
+              <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStageTab('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                    selectedStageTab === 'all'
+                      ? 'bg-emerald-600 text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Semua ({debaterResponses.length})
+                </button>
+                {availableStages.map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setSelectedStageTab(st)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium transition capitalize ${
+                      selectedStageTab === st
+                        ? 'bg-emerald-600 text-white'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {st.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <span className="text-xs text-slate-400">
-            {currentStageResponses.filter((r) => r.status === 'completed').length} dari{' '}
-            {currentStageResponses.length} respons selesai
+            {completedCount} dari {currentStageResponses.length} respons selesai
           </span>
         </div>
 
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {currentStageResponses.map((resp) => {
-            const provCfg = getProviderConfig(resp.provider);
-            return (
-              <ResponseCard
-                key={resp.id}
-                response={resp}
-                officialUrl={provCfg.official_url}
-                onOpenManualBridge={handleOpenManualBridge}
-              />
-            );
-          })}
-        </div>
+        {currentStageResponses.length === 0 ? (
+          <div className="p-8 rounded-2xl bg-slate-900/60 border border-slate-800 text-center text-slate-400">
+            <AlertCircle className="w-8 h-8 mx-auto text-amber-400 mb-2" />
+            <h4 className="text-sm font-semibold text-slate-200">Belum Ada Kartu Respons</h4>
+            <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+              Belum ada respons dewan yang tercatat untuk tampilan ini. Silakan periksa kembali konfigurasi dewan Anda.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {currentStageResponses.map((resp) => {
+              const provCfg = getProviderConfig(resp.provider);
+              return (
+                <ResponseCard
+                  key={resp.id}
+                  response={resp}
+                  officialUrl={provCfg.official_url}
+                  onOpenManualBridge={handleOpenManualBridge}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Final Moderator Synthesis Section */}
