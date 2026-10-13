@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.all_models import ProviderConfiguration, UsageRecord
@@ -9,6 +9,10 @@ from app.adapters.base import BaseAIAdapter, AdapterResult
 from app.adapters.openai_adapter import OpenAIAdapter
 from app.adapters.anthropic_adapter import AnthropicAdapter
 from app.adapters.gemini_adapter import GeminiAdapter
+from app.adapters.openrouter_adapter import OpenRouterAdapter
+from app.adapters.ollama_adapter import OllamaAdapter
+from app.adapters.qwen_adapter import QwenAdapter
+from app.adapters.deepseek_adapter import DeepSeekAdapter
 
 SECRETS_FILE = settings.data_dir / "provider_secrets.json"
 
@@ -32,6 +36,13 @@ class ProviderManager:
             self._secrets_cache["claude"] = settings.anthropic_api_key
         if settings.gemini_api_key:
             self._secrets_cache["gemini"] = settings.gemini_api_key
+        if settings.openrouter_api_key:
+            self._secrets_cache["openrouter"] = settings.openrouter_api_key
+        if settings.dashscope_api_key:
+            self._secrets_cache["qwen"] = settings.dashscope_api_key
+            self._secrets_cache["dashscope"] = settings.dashscope_api_key
+        if settings.deepseek_api_key:
+            self._secrets_cache["deepseek"] = settings.deepseek_api_key
 
         # 2. Check local secrets file
         if SECRETS_FILE.exists():
@@ -62,23 +73,124 @@ class ProviderManager:
         return self._secrets_cache.get(provider_id)
 
     def is_api_configured(self, provider_id: str) -> bool:
+        pid = provider_id.lower()
+        if pid == "ollama":
+            # Ollama is local, does not require API key
+            return True
         key = self.get_secret(provider_id)
         return bool(key and len(key.strip()) > 5)
 
-    def get_adapter(self, provider_id: str, model: Optional[str] = None) -> Optional[BaseAIAdapter]:
-        key = self.get_secret(provider_id)
+    def get_adapter(
+        self,
+        provider_id: str,
+        model: Optional[str] = None,
+        zero_cost_mode: Optional[bool] = None
+    ) -> Optional[BaseAIAdapter]:
+        z_mode = settings.zero_cost_mode if zero_cost_mode is None else zero_cost_mode
         pid = provider_id.lower()
-        if pid in ("chatgpt", "openai"):
+        key = self.get_secret(provider_id)
+
+        # Handle prefixed identifiers e.g. "openrouter:deepseek/deepseek-r1:free"
+        if ":" in pid and not pid.startswith("http"):
+            parts = pid.split(":", 1)
+            pid = parts[0]
+            if not model:
+                model = parts[1]
+
+        if pid in ("openrouter",):
+            return OpenRouterAdapter(
+                api_key=key or self.get_secret("openrouter"),
+                model=model,
+                zero_cost_mode=z_mode
+            )
+        elif pid in ("ollama",):
+            return OllamaAdapter(
+                base_url=settings.ollama_base_url,
+                model=model
+            )
+        elif pid in ("qwen", "dashscope"):
+            return QwenAdapter(
+                api_key=key or self.get_secret("qwen") or self.get_secret("dashscope"),
+                model=model,
+                zero_cost_mode=z_mode
+            )
+        elif pid in ("deepseek",):
+            return DeepSeekAdapter(
+                api_key=key or self.get_secret("deepseek"),
+                model=model,
+                zero_cost_mode=z_mode
+            )
+        elif pid in ("chatgpt", "openai"):
             return OpenAIAdapter(api_key=key, model=model)
         elif pid in ("claude", "anthropic"):
             return AnthropicAdapter(api_key=key, model=model)
         elif pid in ("gemini", "google"):
             return GeminiAdapter(api_key=key, model=model)
+
         return None
 
     @classmethod
     def seed_default_providers(cls, db: Session):
         defaults = [
+            {
+                "id": "openrouter",
+                "display_name": "OpenRouter (Free Models)",
+                "is_enabled": True,
+                "default_mode": "api",
+                "official_url": "https://openrouter.ai",
+                "selected_model": "deepseek/deepseek-r1:free",
+                "supported_models": [
+                    "deepseek/deepseek-r1:free",
+                    "meta-llama/llama-3.3-70b-instruct:free",
+                    "qwen/qwen-2.5-72b-instruct:free",
+                    "google/gemini-2.0-flash-exp:free",
+                    "mistralai/mistral-small-24b-instruct-2501:free"
+                ],
+                "usage_limit_monthly_usd": 0.0
+            },
+            {
+                "id": "ollama",
+                "display_name": "Ollama (Model Lokal Mac)",
+                "is_enabled": True,
+                "default_mode": "api",
+                "official_url": "https://ollama.com",
+                "selected_model": "llama3.2",
+                "supported_models": [
+                    "llama3.2",
+                    "qwen2.5:7b",
+                    "deepseek-r1:8b",
+                    "mistral:7b"
+                ],
+                "usage_limit_monthly_usd": 0.0
+            },
+            {
+                "id": "qwen",
+                "display_name": "Qwen / Alibaba Model Studio",
+                "is_enabled": True,
+                "default_mode": "manual",
+                "official_url": "https://www.alibabacloud.com/help/en/model-studio",
+                "selected_model": "qwen-turbo",
+                "supported_models": [
+                    "qwen-turbo",
+                    "qwen-plus",
+                    "qwen-max",
+                    "qwen2.5-72b-instruct"
+                ],
+                "usage_limit_monthly_usd": 10.0
+            },
+            {
+                "id": "deepseek",
+                "display_name": "DeepSeek API Langsung",
+                "is_enabled": True,
+                "default_mode": "manual",
+                "official_url": "https://platform.deepseek.com",
+                "selected_model": "deepseek-chat",
+                "supported_models": [
+                    "deepseek-chat",
+                    "deepseek-reasoner"
+                ],
+                "usage_limit_monthly_usd": 10.0
+            },
             {
                 "id": "chatgpt",
                 "display_name": "ChatGPT",
@@ -147,6 +259,10 @@ class ProviderManager:
                 db.add(cfg)
             else:
                 existing.api_key_configured = manager.is_api_configured(item["id"])
+                # Ensure supported_models are updated if new defaults exist
+                if set(item["supported_models"]) - set(existing.supported_models or []):
+                    merged = list(dict.fromkeys((existing.supported_models or []) + item["supported_models"]))
+                    existing.supported_models = merged
         db.commit()
 
 

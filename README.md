@@ -1,49 +1,37 @@
-# AI Council — Multi-AI Discussion & Research Workspace
+# AI Council — Free Multi-Provider AI Debate Platform & Research Workspace
 
-AI Council adalah platform kolaboratif dan ruang penelitian pribadi yang memungkinkan Anda mengelola diskusi bersama **ChatGPT**, **Claude**, **Gemini**, dan sumber riset **NotebookLM** dalam satu antarmuka terpadu.
+AI Council adalah platform kolaboratif dan ruang penelitian terbuka yang memungkinkan Anda menjalankan **Debat Multi-AI Otomatis dalam 1-Klik** menggunakan model-model AI gratis atau berkuota gratis dari berbagai keluarga (**DeepSeek, Qwen / Alibaba, Meta Llama, GLM, Ollama Lokal, Google Gemini, Anthropic Claude, dan OpenAI ChatGPT**) serta integrasi sumber riset **NotebookLM** dalam satu antarmuka terpadu.
 
-Aplikasi ini dirancang khusus untuk berjalan secara lokal di Mac (Apple Silicon & Intel) maupun di-deploy ke server pribadi menggunakan Docker Compose.
+Aplikasi ini dirancang khusus dengan **Zero-Cost Mode** aktif secara default, memastikan Anda tidak pernah mengeluarkan biaya tagihan API yang tidak disengaja.
 
 ---
 
 ## 1. Arsitektur & Prinsip Utama
 
-1. **Mode A — Manual Bridge (Default & 100% Gratis)**:
-   - Tidak memerlukan kredit API berbayar.
-   - Anda dapat memanfaatkan akun antarmuka gratis Anda (**ChatGPT Go/Free**, **Claude Free**, **Gemini Pro Web**, dan **NotebookLM**).
-   - Aplikasi otomatis memformat prompt, menyediakan tombol 1-klik untuk membuka layanan resmi, menyalin prompt, dan kolom penempelan respons kembali ke dewan.
-2. **Mode B — Official API (Opsional)**:
-   - Tersedia adapter resmi untuk OpenAI API, Anthropic API, dan Google Gemini API jika Anda memiliki API key pribadi.
-   - Kunci API disimpan aman di backend lokal, tidak pernah dikirim ke frontend, dan tidak pernah disimpan dalam git.
-3. **State Machine Debat Multi-Putaran**:
-   - 4 Tahap Terstruktur: **Initial Analysis** &rarr; **Cross-Critique** &rarr; **Rebuttal** &rarr; **Final Synthesis**.
-   - Moderator menghasilkan konsensus berbasis 8 poin fakta (bukan suara mayoritas fiktif).
-4. **Knowledge Engine Lokal**:
-   - Ekstraksi PDF menggunakan PyMuPDF (`fitz`), pengindeksan potongan halaman lokal, dan pencarian kutipan berbasis skor relevansi.
-   - Membedakan kutipan asli terverifikasi dari ringkasan spekulatif.
+1. **Mode Bebas Biaya (Zero-Cost Mode — Prioritas Mutlak)**:
+   - Memvalidasi metadata harga resmi setiap model (`pricing.prompt == 0.0` dan `pricing.completion == 0.0`).
+   - Secara default **menolak** model berbayar atau model yang harga gratisnya tidak dapat diverifikasi.
+   - Tidak pernah melakukan fallback otomatis ke model berbayar.
+2. **Debat Otomatis 1-Klik (Single-Prompt Autonomous Debate)**:
+   - Cukup masukkan topik atau pertanyaan, pilih peserta AI dari berbagai keluarga, dan klik **Mulai Diskusi**.
+   - Sistem menjalankan seluruh siklus 4 tahapan secara otomatis:
+     - **Stage 1 — Initial Analysis**: Analisis independen dari setiap model.
+     - **Stage 2 — Cross-Critique**: Kritik silang otomatis membaca jawaban peserta lain untuk mendeteksi kelemahan logika dan asumsi.
+     - **Stage 3 — Rebuttal / Refinement**: Pembelaan atau perbaikan argumen atas kritik yang diterima.
+     - **Stage 4 — Final Synthesis**: Moderator menyusun laporan konsensus 8 bagian berdasarkan seluruh jawaban yang valid.
+3. **Multi-Provider & Dynamic Model Catalog**:
+   - **OpenRouter Free Models**: Akses dinamis ke model open-weight gratis (DeepSeek R1/V3, Qwen 2.5, Meta Llama 3.3, Mistral, Nemotron).
+   - **Alibaba Cloud Model Studio (DashScope)**: Adapter resmi Qwen langsung (`DASHSCOPE_API_KEY`).
+   - **DeepSeek API Direct**: Adapter resmi DeepSeek (`DEEPSEEK_API_KEY`) dengan proteksi Zero-Cost Mode.
+   - **Ollama Local**: Eksekusi model lokal tanpa internet (`http://localhost:11434`), 100% privat dan gratis.
+   - **Manual Bridge (Web UI)**: Eksekusi manual web ChatGPT, Claude, Gemini, dan NotebookLM via antarmuka web gratis tanpa API key.
+4. **Isolasi Kegagalan & Concurrency**:
+   - Pemanggilan model dieksekusi secara asinkron dan paralel dengan batas concurrency yang aman.
+   - Kegagalan salah satu model (misal: rate limit 429 atau kuota habis) tidak menggagalkan peserta lain yang masih berhasil.
+5. **Ekspor Laporan Lengkap**:
+   - Hasil debat dan sintesis moderator dapat diekspor langsung dalam format **Markdown (.md)** dan **Plain Text (.txt)**.
 
 ---
-
-
-## Auto Copy-Paste Bridge (Playwright lokal)
-
-Bridge opsional ini membuka browser Chromium yang terlihat dan mengisi prompt ke antarmuka resmi ChatGPT, Gemini, Claude, atau NotebookLM. Bridge **tidak mengirim prompt otomatis**: periksa isi prompt lalu klik tombol kirim sendiri. Login dilakukan manual di situs resmi; aplikasi tidak mengambil cookie, token, atau melewati autentikasi.
-
-### Setup lokal
-
-1. Jalankan backend dari mesin desktop yang memiliki sesi grafis aktif (bukan container/headless server):
-   ```bash
-   cd backend
-   pip install -r requirements.txt
-   python -m playwright install chromium
-   python run.py
-   ```
-2. Jalankan frontend seperti biasa dari `frontend` dengan `npm install` dan `npm run dev`.
-3. Buka Manual Bridge pada respons diskusi, lalu pilih **Isi via Playwright**.
-4. Saat pertama kali, login sendiri di jendela Chromium yang terbuka. Klik tombol tersebut lagi setelah login jika prompt belum terisi.
-5. Periksa prompt dan kirim sendiri di halaman provider. Salin jawaban ke kolom respons AI Council untuk melanjutkan alur diskusi.
-
-Profil browser tersimpan lokal di `data/playwright-profile` (direktori `data/` diabaikan Git). Perlakukan profil ini sebagai data privat. Jangan jalankan bridge pada server publik; endpoint dirancang untuk penggunaan lokal tepercaya. Jika UI provider berubah dan kolom pesan tidak ditemukan, gunakan tombol salin/manual yang sudah ada.
 
 ## 2. Struktur Repositori
 
@@ -51,21 +39,21 @@ Profil browser tersimpan lokal di `data/playwright-profile` (direktori `data/` d
 ai-council/
 ├── backend/
 │   ├── app/
-│   │   ├── adapters/          # OpenAI, Anthropic, Gemini, dan Base Adapters
+│   │   ├── adapters/          # OpenAI, Anthropic, Gemini, OpenRouter, Qwen, DeepSeek, Ollama
 │   │   ├── models/            # SQLAlchemy database models (12 entitas)
 │   │   ├── routers/           # API routes (health, discussions, documents, providers, research, usage)
 │   │   ├── schemas/           # Pydantic v2 schemas
-│   │   ├── services/          # Orchestrator, PromptBuilder, DocumentService, ProviderManager
+│   │   ├── services/          # Orchestrator (Auto Debate Engine), PromptBuilder, DocumentService, ProviderManager
 │   │   ├── config.py          # Konfigurasi aplikasi & settings
 │   │   ├── database.py        # SQLAlchemy session & SQLite engine
 │   │   └── main.py            # Entrypoint FastAPI
 │   ├── alembic/               # Skrip migrasi database
-│   ├── tests/                 # Automated unit & integration test suites
+│   ├── tests/                 # Automated unit & integration test suites (45 tests)
 │   ├── requirements.txt       # Kunci dependensi Python
 │   └── run.py                 # Runner backend lokal
 ├── frontend/
 │   ├── src/
-│   │   ├── components/        # Sidebar, ManualBridgeModal, DebateTimeline, ResponseCard, SynthesisView, dll.
+│   │   ├── components/        # Sidebar, ResponseCard, DebateTimeline, SynthesisView, ManualBridgeModal, dll.
 │   │   ├── pages/             # Dashboard, NewDiscussion, DiscussionDetail, Compare, Debate, Research, Documents, History, Providers, Usage, Settings
 │   │   ├── services/api.ts    # TypeScript API Client
 │   │   ├── App.tsx            # React router & layout
@@ -86,15 +74,16 @@ ai-council/
 
 ---
 
-## 3. Prasyarat Lingkungan (Mac)
+## 3. Prasyarat Lingkungan (Mac & Linux)
 
-- **macOS** 12 (Monterey) atau yang lebih baru.
+- **macOS** 12+ atau **Linux** (Ubuntu/Debian).
 - **Python** 3.9+ (disarankan menggunakan virtual environment `.venv`).
 - **Node.js** v18+ atau v20+ dan **npm** v9+.
+- *(Opsional)* **Ollama** jika ingin menjalankan model open-source lokal di mesin sendiri.
 
 ---
 
-## 4. Cara Instalasi & Menjalankan di Mac
+## 4. Cara Instalasi & Menjalankan
 
 ### Langkah 1: Kloning & Masuk ke Folder Proyek
 ```bash
@@ -132,119 +121,122 @@ npm install
 # 2. Jalankan server pengembangan Vite
 npm run dev
 ```
-Frontend web siap diakses di peramban (browser) Anda: **`http://127.0.0.1:5173`**.
+Frontend web siap diakses di browser Anda: **`http://127.0.0.1:5173`**.
 
 ---
 
-## 5. Menjalankan via Docker Compose (Opsi Server Pribadi)
+## 5. Konfigurasi Provider & Kunci API Gratis
 
-Jika ingin menjalankan aplikasi secara terisolasi atau di server Linux:
+Salin file konfigurasi lingkungan:
 ```bash
-docker compose up --build -d
+cp .env.example .env
 ```
-Aplikasi frontend akan tersedia di `http://127.0.0.1:5173` dan backend di `http://127.0.0.1:8000`. Port dibatasi hanya dapat diakses melalui localhost demi keamanan. Data persisten tersimpan aman di folder `./data`.
+
+### Variabel Environment Penting:
+```env
+# Multi-Provider Gratis (OpenRouter, DashScope, DeepSeek, Ollama)
+OPENROUTER_API_KEY="sk-or-v1-xxxxxxxx"
+DASHSCOPE_API_KEY=""
+DEEPSEEK_API_KEY=""
+OLLAMA_BASE_URL="http://localhost:11434"
+
+# Keamanan Biaya: Zero-Cost Mode (Default: true)
+AI_COUNCIL_ZERO_COST_MODE=true
+MAX_DEBATE_ROUNDS=3
+MAX_REQUESTS_PER_RUN=30
+MAX_TOKENS_PER_RESPONSE=2048
+```
+
+### Panduan Mendapatkan Kunci API Gratis:
+
+1. **OpenRouter (Satu Kunci untuk Beragam Model Gratis)**:
+   - Kunjungi [openrouter.ai/keys](https://openrouter.ai/keys) dan buat akun gratis.
+   - Buat kunci API baru (bebas biaya, tanpa perlu deposit saldo awal untuk model gratis).
+   - Simpan kunci di `OPENROUTER_API_KEY` pada `.env`.
+   - AI Council otomatis mengambil katalog model yang berakhiran `:free` dan berharga $0.00 (misalnya: `deepseek/deepseek-r1:free`, `qwen/qwen-2.5-72b-instruct:free`, `meta-llama/llama-3.3-70b-instruct:free`).
+
+2. **Alibaba Cloud Model Studio / Qwen (DashScope)**:
+   - Dapatkan kuota promosi gratis di [Alibaba Cloud Model Studio](https://www.alibabacloud.com/help/en/model-studio/new-free-quota).
+   - Masukkan kunci di `DASHSCOPE_API_KEY`.
+
+3. **Ollama (Model Lokal — 100% Offline & Gratis)**:
+   - Pasang Ollama dari [ollama.com](https://ollama.com).
+   - Jalankan model yang diinginkan di terminal, misalnya: `ollama run llama3.2` atau `ollama run qwen2.5:7b`.
+   - AI Council otomatis mendeteksi model lokal yang terpasang melalui `http://localhost:11434`.
+
+4. **DeepSeek Direct API**:
+   - Jika memiliki saldo DeepSeek, isi `DEEPSEEK_API_KEY`.
+   - Dalam **Zero-Cost Mode**, DeepSeek Direct akan diblokir secara default kecuali jika biaya telah diverifikasi atau Zero-Cost Mode dinonaktifkan oleh pengguna.
 
 ---
 
-## 6. Alur Penggunaan (Workflow)
+## 6. Alur Debat Otomatis 1-Klik (Single Prompt Debate)
 
-### A. Alur Diskusi Paralel (Mode 1)
 1. Buka menu **Diskusi Baru** (`/new-discussion`).
-2. Masukkan pertanyaan (misal: perbandingan teknologi atau evaluasi arsitektur).
-3. Pilih **Parallel Chat**, tentukan model AI dewan yang ingin diajak berdiskusi.
-4. Klik **Mulai Diskusi AI Council**.
-5. Pada setiap kartu model:
-   - Klik **Buka Manual Bridge & Salin Prompt**.
-   - Klik tombol **Buka Layanan AI Resmi** untuk membuka tab ChatGPT/Claude/Gemini.
-   - Tempel prompt, salin hasil jawabannya dari AI tersebut, dan tempelkan kembali ke kolom input aplikasi.
-   - Klik **Simpan Respons ke Dewan**.
-6. Jawaban tersimpan rapi dan dapat dibandingkan secara langsung.
-
-### B. Alur AI Debate & Konsensus Moderator (Mode 2)
-1. Pilih mode **AI Debate** dan tentukan jumlah putaran (1 sampai 3 putaran).
-2. **Tahap 1 (Initial Analysis)**: Masing-masing model memberikan hipotesis dan bukti awal.
-3. Klik **Lanjut ke Tahap Berikutnya** &rarr; **Tahap 2 (Cross-Critique)**: Sistem menyusun prompt kritik silang untuk memeriksa:
-   - Klaim yang tidak memiliki bukti.
-   - Kontradiksi internal dan antarmodel.
-   - Asumsi tersembunyi yang belum teruji.
-   - Kesalahan logika / fallacy.
-4. Klik **Lanjut ke Tahap Berikutnya** &rarr; **Tahap 3 (Rebuttal)**: Model menanggapi kritik, mengakui kekeliruan, atau mempertahankan argumen dengan bukti baru.
-5. Klik **Lanjut ke Tahap Berikutnya** &rarr; **Tahap 4 (Final Synthesis)**:
-   - Sistem merangkum seluruh transkrip perdebatan ke dalam prompt moderator.
-   - Moderator menghasilkan sintesis 8 bagian: *Ringkasan Masalah*, *Kesepakatan Antarmodel*, *Perbedaan Pendapat*, *Kritik Belum Terselesaikan*, *Bukti Pendukung*, *Rekomendasi*, *Ketidakpastian*, dan *Referensi Sumber*.
-6. Klik **Ekspor Laporan** untuk mengunduh dokumen laporan Markdown lengkap.
-
-### C. Alur Knowledge Engine & NotebookLM (Mode 3)
-1. Masuk ke menu **Dokumen & Sumber** (`/documents`).
-2. Unggah file PDF, TXT, atau Markdown. PyMuPDF otomatis memecah teks per halaman dan membuat indeks pencarian.
-3. Masuk ke **Ruang Riset** (`/research`), buat proyek penelitian baru.
-4. Gunakan generator prompt NotebookLM, buka tautan resmi NotebookLM, dan simpan catatan temuan penelitian Anda.
+2. Masukkan topik / permasalahan yang ingin diperdebatkan.
+3. Pilih mode **AI Debate**.
+4. Aktifkan sakelar **Debat Otomatis (1-Klik)**.
+5. Pilih minimal 2 model peserta dari katalog model gratis (misalnya: *DeepSeek R1 Free*, *Qwen 2.5 Free*, dan *Llama 3.3 Free*).
+6. Tentukan jumlah putaran (1 sampai 3 putaran).
+7. Klik **Mulai Debat AI Council**.
+8. Sistem akan mengeksekusi:
+   - **Stage 1 (Initial Analysis)** secara paralel.
+   - **Stage 2 (Cross-Critique)** otomatis saat Stage 1 selesai.
+   - **Stage 3 (Rebuttal)** otomatis saat Stage 2 selesai.
+   - **Stage 4 (Final Synthesis)** moderator menyusun konsensus menyeluruh.
+9. Anda dapat menghentikan jalannya debat kapan saja dengan tombol **Hentikan Diskusi** atau mengunduh hasilnya dengan tombol **Ekspor Laporan** (.md dan .txt).
 
 ---
 
-## 7. Konfigurasi Provider: Membedakan Layanan Web & Model API
+## 7. Auto Copy-Paste Bridge (Playwright Lokal)
 
-Penting dipahami bahwa **langganan antarmuka web tidak otomatis memberikan akses API**. AI Council membedakan keduanya secara tegas:
-
-| Provider | Akun / Antarmuka Web (Mode A: Manual) | Model API Resmi (Mode B: Optional API) | Status Integrasi |
-| :--- | :--- | :--- | :--- |
-| **ChatGPT** | ChatGPT Go, ChatGPT Free, ChatGPT Plus (`https://chatgpt.com`) | `gpt-4o`, `gpt-4o-mini`, `o3-mini` | Manual Bridge aktif; API opsional jika memiliki API key |
-| **Claude** | Claude Free, Claude Pro (`https://claude.ai`) | `claude-3-7-sonnet-20250219`, `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022` | Manual Bridge aktif; API opsional jika memiliki API key |
-| **Gemini** | Gemini Pro Web, Gemini Free, Advanced (`https://gemini.google.com`) | `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-flash` | Manual Bridge aktif; API opsional jika memiliki API key |
-| **NotebookLM** | Akun pengguna pribadi (`https://notebooklm.google.com`) | *Tidak tersedia API publik untuk akun standar* | Eksklusif via Manual Bridge (100% Gratis) |
-
-> **Catatan Transparansi Biaya:**
-> - Pada **Mode A (Manual Bridge)**, token yang ditampilkan adalah estimasi volume teks untuk referensi pengguna. Biaya API adalah **Rp 0** dan tidak ada biaya tagihan ke pengguna.
-> - Pada **Mode B (Official API)**, token dilaporkan sesuai metadata resmi provider dan estimasi biaya dihitung berdasarkan tarif per 1M token resmi.
-
----
-
-## 8. Backup & Restore Data Lokal
-
-Semua data persisten berada di folder `./data`:
+Bridge opsional ini membuka browser Chromium yang terlihat dan mengisi prompt ke antarmuka web ChatGPT, Gemini, Claude, atau NotebookLM:
 ```bash
-# Melakukan backup arsip data:
-tar -czvf ai_council_backup_$(date +%F).tar.gz data/
-
-# Melakukan restore arsip data:
-tar -xzvf ai_council_backup_2026-10-13.tar.gz
+pip install -r backend/requirements.txt
+python -m playwright install chromium
 ```
+Login manual satu kali di jendela peramban. AI Council tidak pernah mengambil cookie atau membypass otentikasi.
 
 ---
 
-## 9. Menjalankan Automated Tests
+## 8. Menjalankan Automated Tests
 
-Test suite komprehensif menguji pembuatan percakapan, alur manual bridge, transisi state machine debat, ekstraksi PyMuPDF, dan integrasi full-flow:
+Seluruh alur Zero-Cost Mode, katalog OpenRouter dinamis, state machine debat otomatis, isolasi kegagalan, dan ekspor diuji secara menyeluruh dengan API mock terisolasi:
+
 ```bash
 source .venv/bin/activate
 export PYTHONPATH=backend
 pytest -v backend/tests
 ```
-Semua 7 suite pengujian unit dan integrasi akan dieksekusi menggunakan in-memory database terisolasi tanpa memerlukan kredensial berbayar.
+
+**Hasil Pengujian:**
+- Total **45 test lulus (45 passed, 0 failed)** dalam ~1.8 detik.
 
 ---
 
-## 10. Dokumentasi Endpoint Backend
+## 9. Dokumentasi Endpoint Backend
 
 | Metode | Endpoint | Keterangan |
 | :--- | :--- | :--- |
 | `GET` | `/api/health` | Status kesehatan sistem dan database |
-| `POST` | `/api/discussions` | Memulai sesi diskusi/debat baru |
+| `POST` | `/api/discussions` | Membuat sesi diskusi/debat baru (mendukung `auto_run`) |
 | `GET` | `/api/discussions/{run_id}` | Mengambil detail dan respons sesi diskusi |
+| `POST` | `/api/discussions/{run_id}/run-auto` | Memicu eksekusi otomatis tahapan debat di background |
 | `POST` | `/api/discussions/{run_id}/responses` | Mengirim respons manual (Manual Bridge) |
-| `POST` | `/api/discussions/{run_id}/advance` | Memajukan tahapan debat (Critique &rarr; Rebuttal &rarr; Synthesis) |
+| `POST` | `/api/discussions/{run_id}/advance` | Memajukan tahapan debat manual (Critique &rarr; Rebuttal &rarr; Synthesis) |
 | `POST` | `/api/discussions/{run_id}/synthesis` | Menyimpan sintesis moderator 8 poin |
 | `POST` | `/api/discussions/{run_id}/stop` | Menghentikan sesi diskusi |
-| `GET` | `/api/discussions/{run_id}/export` | Mengunduh laporan hasil dalam format Markdown |
-| `GET` | `/api/conversations` | Daftar seluruh riwayat percakapan |
-| `DELETE` | `/api/conversations/{id}` | Menghapus percakapan |
+| `GET` | `/api/discussions/{run_id}/export` | Mengunduh laporan hasil dalam format Markdown & Plain Text |
+| `GET` | `/api/providers/catalog/models` | Mengambil katalog dinamis model gratis & verifikasi harga $0.00 |
+| `GET` | `/api/providers` | Konfigurasi provider dan status API key |
+| `PUT` | `/api/providers/{id}` | Memperbarui mode (manual/api), model, dan batas biaya |
 | `POST` | `/api/documents/upload` | Mengunggah PDF/TXT dan mengekstrak teks via PyMuPDF |
 | `GET` | `/api/documents` | Daftar dokumen penelitian |
 | `POST` | `/api/documents/search` | Pencarian teks dan potongan dokumen relevan |
-| `DELETE` | `/api/documents/{id}` | Menghapus dokumen dari disk dan indeks |
-| `GET` | `/api/providers` | Konfigurasi provider dan status API key |
-| `PUT` | `/api/providers/{id}` | Memperbarui mode (manual/api), model, dan batas biaya |
-| `POST` | `/api/providers/{id}/test` | Menguji konektivitas provider |
-| `GET` | `/api/research/projects` | Daftar proyek penelitian terstruktur |
-| `GET` | `/api/research/notebooklm-prompt` | Generator prompt riset untuk NotebookLM |
 | `GET` | `/api/usage/summary` | Audit pemisahan penggunaan manual (Rp 0) vs API |
+
+---
+
+## 10. Lisensi
+
+Dibuat untuk penelitian, edukasi, dan evaluasi model kecerdasan buatan multi-agen secara independen dan hemat biaya.

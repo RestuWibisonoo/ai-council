@@ -53,10 +53,20 @@ class Settings(BaseSettings):
             return 1
         return v
 
-    # API Keys (optional; read from environment or updated via encrypted/local settings)
+    # API Keys & Providers (optional; read from environment or updated via encrypted/local settings)
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
+    dashscope_api_key: Optional[str] = None
+    deepseek_api_key: Optional[str] = None
+    ollama_base_url: str = "http://localhost:11434"
+
+    # Zero-Cost Mode & Safety Limits
+    zero_cost_mode: bool = True
+    ai_council_zero_cost_mode: bool = True
+    max_requests_per_run: int = 30
+    max_tokens_per_response: int = 2048
 
     model_config = SettingsConfigDict(
         env_file=".env",

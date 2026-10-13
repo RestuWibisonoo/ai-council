@@ -25,7 +25,7 @@ export interface ModelResponse {
   integration_mode: 'manual' | 'api';
   prompt_used: string;
   content: string;
-  status: 'pending' | 'completed' | 'failed';
+  status: 'pending' | 'in_progress' | 'running' | 'queued' | 'completed' | 'failed' | 'skipped' | 'cancelled';
   error_message: string | null;
   prompt_tokens: number;
   completion_tokens: number;
@@ -158,6 +158,21 @@ export interface UsageSummary {
   }>;
 }
 
+export interface CatalogModel {
+  id: string;
+  raw_id: string;
+  name: string;
+  provider: string;
+  provider_name: string;
+  family: string;
+  is_free: boolean;
+  is_zero_cost: boolean;
+  pricing_type: string;
+  description: string;
+  context_length: number;
+  is_available: boolean;
+}
+
 const API_BASE = '/api';
 
 export const api = {
@@ -176,6 +191,9 @@ export const api = {
     project_id?: string;
     linked_document_ids?: string[];
     conversation_title?: string;
+    auto_run?: boolean;
+    zero_cost_mode?: boolean;
+    moderator_model?: string;
   }): Promise<DiscussionRun> {
     const res = await fetch(`${API_BASE}/discussions`, {
       method: 'POST',
@@ -185,6 +203,23 @@ export const api = {
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.detail || 'Gagal memulai diskusi');
+    }
+    return res.json();
+  },
+
+  async getModelsCatalog(): Promise<CatalogModel[]> {
+    const res = await fetch(`${API_BASE}/providers/catalog/models`);
+    if (!res.ok) throw new Error('Gagal memuat katalog model');
+    return res.json();
+  },
+
+  async triggerAutoDebate(runId: string): Promise<DiscussionRun> {
+    const res = await fetch(`${API_BASE}/discussions/${runId}/run-auto`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Gagal menjalankan debat otomatis');
     }
     return res.json();
   },

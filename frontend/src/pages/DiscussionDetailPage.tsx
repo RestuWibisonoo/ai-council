@@ -45,6 +45,8 @@ export const DiscussionDetailPage: React.FC = () => {
   const [isSynthesisModalOpen, setIsSynthesisModalOpen] = useState(false);
   const [isPartialSynthesis, setIsPartialSynthesis] = useState(false);
 
+  const [isStartingAutoDebate, setIsStartingAutoDebate] = useState(false);
+
   const loadRun = async () => {
     if (!id) return;
     try {
@@ -64,14 +66,28 @@ export const DiscussionDetailPage: React.FC = () => {
 
   useEffect(() => {
     loadRun();
-    // Poll updates every 4 seconds if discussion is awaiting input or running
+    // Poll updates every 2.5s if in_progress, or 4s if awaiting_input
+    const pollInterval = run?.status === 'in_progress' ? 2500 : 4000;
     const interval = setInterval(() => {
       if (run && (run.status === 'awaiting_input' || run.status === 'in_progress')) {
         loadRun();
       }
-    }, 4000);
+    }, pollInterval);
     return () => clearInterval(interval);
   }, [id, run?.status]);
+
+  const handleStartAutoDebate = async () => {
+    if (!id) return;
+    setIsStartingAutoDebate(true);
+    try {
+      await api.triggerAutoDebate(id);
+      await loadRun();
+    } catch (err: any) {
+      alert(err.message || 'Gagal memulai debat otomatis');
+    } finally {
+      setIsStartingAutoDebate(false);
+    }
+  };
 
   const handleOpenManualBridge = (resp: ModelResponse) => {
     setActiveManualBridgeResp(resp);
@@ -334,21 +350,33 @@ export const DiscussionDetailPage: React.FC = () => {
           )}
 
           {canAdvanceStage && (
-            <button
-              onClick={handleAdvanceStage}
-              disabled={isAdvancing || !hasMinimumResponses}
-              title={!hasMinimumResponses ? 'Harap isi minimal 1 respons sebelum lanjut' : undefined}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20"
-            >
-              <FastForward className="w-4 h-4 fill-current" />
-              <span>
-                {isAdvancing
-                  ? 'Melanjutkan...'
-                  : run.current_stage === 'rebuttal'
-                  ? 'Lanjut ke Sintesis Moderator'
-                  : 'Lanjut ke Tahap Berikutnya'}
-              </span>
-            </button>
+            <>
+              <button
+                onClick={handleStartAutoDebate}
+                disabled={isStartingAutoDebate || isAdvancing}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+                title="Jalankan otomatis seluruh sisa tahap debat hingga sintesis akhir"
+              >
+                <Sparkles className="w-3.5 h-3.5 fill-current" />
+                <span>{isStartingAutoDebate ? 'Memulai Otomatis...' : 'Jalankan Debat Otomatis'}</span>
+              </button>
+
+              <button
+                onClick={handleAdvanceStage}
+                disabled={isAdvancing || !hasMinimumResponses || isStartingAutoDebate}
+                title={!hasMinimumResponses ? 'Harap isi minimal 1 respons sebelum lanjut' : undefined}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-300 font-semibold text-xs transition shadow-sm"
+              >
+                <FastForward className="w-3.5 h-3.5" />
+                <span>
+                  {isAdvancing
+                    ? 'Melanjutkan...'
+                    : run.current_stage === 'rebuttal'
+                    ? 'Lanjut ke Sintesis Moderator'
+                    : 'Lanjut 1 Tahap'}
+                </span>
+              </button>
+            </>
           )}
 
           {run.current_stage === 'final_synthesis' && run.status !== 'completed' && (
@@ -382,6 +410,36 @@ export const DiscussionDetailPage: React.FC = () => {
             )}
         </div>
       </div>
+
+      {/* Active Autonomous Running Banner */}
+      {run.status === 'in_progress' && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/60 via-slate-900 to-slate-900 border border-emerald-500/40 text-xs text-slate-200 flex flex-wrap items-center justify-between gap-4 shadow-xl shadow-emerald-950/20">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-3.5 w-3.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
+            </div>
+            <div>
+              <div className="font-bold text-white flex items-center gap-2">
+                <span>Debat Otomatis Sedang Berjalan (Multi-AI Council)</span>
+                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Tahap: {run.current_stage.replace('_', ' ')}
+                </span>
+              </div>
+              <p className="text-slate-400 text-[11px] mt-0.5">
+                Model dewan sedang menganalisis &amp; berdebat secara mandiri. Halaman diperbarui secara otomatis.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleStopDiscussion}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/50 text-rose-400 border border-rose-500/30 text-xs font-semibold transition"
+          >
+            <StopCircle className="w-3.5 h-3.5" />
+            <span>Hentikan Debat</span>
+          </button>
+        </div>
+      )}
 
       {/* Parallel Mode Info Banner */}
       {run.mode === 'parallel' && (

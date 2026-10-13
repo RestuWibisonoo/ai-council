@@ -222,11 +222,14 @@ class DiscussionRunOut(BaseModel):
 class DiscussionCreateRequest(BaseModel):
     query: str = Field(..., min_length=1)
     mode: str = "parallel"  # "parallel" | "debate" | "research"
-    selected_providers: List[str] = Field(default=["chatgpt", "claude", "gemini"])
+    selected_providers: List[str] = Field(default=["openrouter:deepseek/deepseek-r1:free", "openrouter:meta-llama/llama-3.3-70b-instruct:free", "openrouter:qwen/qwen-2.5-72b-instruct:free"])
     max_rounds: int = Field(default=2, ge=1, le=3)
     project_id: Optional[str] = None
     linked_document_ids: List[str] = Field(default_factory=list)
     conversation_title: Optional[str] = None
+    auto_run: bool = True
+    zero_cost_mode: bool = True
+    moderator_model: Optional[str] = None
 
 
 class SubmitManualResponseRequest(BaseModel):

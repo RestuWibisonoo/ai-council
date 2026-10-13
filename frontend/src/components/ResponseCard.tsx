@@ -60,6 +60,35 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
           badge: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
           dot: 'bg-indigo-400',
         };
+      case 'openrouter':
+        return {
+          name: 'OpenRouter',
+          border: 'border-purple-500/30',
+          badge: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+          dot: 'bg-purple-400',
+        };
+      case 'ollama':
+        return {
+          name: 'Ollama Lokal',
+          border: 'border-orange-500/30',
+          badge: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
+          dot: 'bg-orange-400',
+        };
+      case 'qwen':
+      case 'dashscope':
+        return {
+          name: 'Qwen / Alibaba',
+          border: 'border-cyan-500/30',
+          badge: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30',
+          dot: 'bg-cyan-400',
+        };
+      case 'deepseek':
+        return {
+          name: 'DeepSeek',
+          border: 'border-sky-500/30',
+          badge: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+          dot: 'bg-sky-400',
+        };
       default:
         return {
           name: provider.toUpperCase(),
@@ -157,6 +186,12 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
               Selesai
             </span>
           )}
+          {response.status === 'in_progress' && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping"></span>
+              Sedang Berpikir...
+            </span>
+          )}
           {response.status === 'pending' && (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30 animate-pulse">
               <Clock className="w-3 h-3" />
@@ -174,7 +209,13 @@ export const ResponseCard: React.FC<ResponseCardProps> = ({
 
       {/* Content Area */}
       <div className="p-5 flex-1 min-h-[220px] flex flex-col justify-between">
-        {response.status === 'completed' ? (
+        {response.status === 'in_progress' ? (
+          <div className="flex flex-col items-center justify-center h-full my-auto py-12 space-y-3">
+            <div className="w-8 h-8 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"></div>
+            <p className="text-xs text-blue-300 font-semibold">Model AI sedang memproses analisis secara otomatis...</p>
+            <p className="text-[11px] text-slate-500">Hasil akan tampil secara real-time begitu proses selesai.</p>
+          </div>
+        ) : response.status === 'completed' ? (
           <div className="space-y-3">
             <div className="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed whitespace-pre-wrap font-sans">
               {response.content}

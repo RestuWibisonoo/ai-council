@@ -40,14 +40,44 @@ async def create_discussion(
             max_rounds=payload.max_rounds,
             project_id=payload.project_id,
             linked_document_ids=payload.linked_document_ids,
-            conversation_title=payload.conversation_title
+            conversation_title=payload.conversation_title,
+            auto_run=payload.auto_run,
+            zero_cost_mode=payload.zero_cost_mode,
+            moderator_model=payload.moderator_model
         )
         return run
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Gagal memulai diskusi: {str(e)}"
         )
+
+
+@router.post("/{run_id}/run-auto", response_model=DiscussionRunOut)
+async def trigger_auto_debate(
+    run_id: str,
+    db: Session = Depends(get_db)
+):
+    run = db.query(DiscussionRun).filter_by(id=run_id).first()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sesi diskusi tidak ditemukan.")
+    if run.mode != "debate":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Debat otomatis hanya berlaku untuk mode 'debate'.")
+    if run.status == "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sesi diskusi telah selesai.")
+
+    run.status = "in_progress"
+    db.commit()
+    db.refresh(run)
+
+    task = asyncio.create_task(Orchestrator.run_automated_debate(run.id, zero_cost_mode=True))
+    Orchestrator._active_debate_tasks[run.id] = task
+    return run
 
 
 @router.get("/{run_id}", response_model=DiscussionRunOut)
