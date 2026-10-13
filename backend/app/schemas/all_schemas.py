@@ -239,6 +239,7 @@ class SubmitManualResponseRequest(BaseModel):
 class SubmitManualSynthesisRequest(BaseModel):
     run_id: str
     moderator_provider: str = "human_moderator"
+    allow_partial: bool = False
     problem_summary: Optional[str] = None
     consensus_points: Optional[str] = None
     disagreements: Optional[str] = None
@@ -248,6 +249,7 @@ class SubmitManualSynthesisRequest(BaseModel):
     uncertainties_and_verifications: Optional[str] = None
     references_cited: Optional[str] = None
     raw_synthesis: str = Field(..., min_length=1)
+
 
 
 class ConversationOut(BaseModel):

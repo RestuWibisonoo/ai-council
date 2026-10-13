@@ -210,13 +210,25 @@ class Orchestrator:
         if not resp:
             raise ValueError("Respons tidak ditemukan.")
 
-        resp.content = content.strip()
+        run = db.query(DiscussionRun).filter_by(id=resp.run_id).first()
+        if not run:
+            raise ValueError("Sesi diskusi terkait tidak ditemukan.")
+        if run.status == "stopped":
+            raise ValueError("Sesi diskusi sedang dihentikan (stopped). Silakan lanjutkan (resume) sesi terlebih dahulu sebelum menambahkan respons.")
+        if run.status == "completed":
+            raise ValueError("Sesi diskusi telah selesai dan tidak dapat diubah lagi.")
+
+        clean_content = content.strip()
+        if not clean_content and status == "completed":
+            raise ValueError("Konten respons manual tidak boleh kosong jika ditandai selesai.")
+
+        resp.content = clean_content
         resp.status = status
         if model_id:
             resp.model_id = model_id
 
         # Estimate tokens roughly (~4 chars/token) for transparency
-        est_tokens = len(content.split()) * 2
+        est_tokens = len(clean_content.split()) * 2
         resp.completion_tokens = est_tokens
         resp.total_tokens = est_tokens
 
@@ -238,16 +250,17 @@ class Orchestrator:
         db.refresh(resp)
 
         # Update run status
-        run = db.query(DiscussionRun).filter_by(id=resp.run_id).first()
-        if run:
-            cls._update_run_status(db, run)
-
+        cls._update_run_status(db, run)
         return resp
 
     @classmethod
     def _update_run_status(cls, db: Session, run: DiscussionRun):
+        if run.status in ("stopped", "completed"):
+            return
+
         responses = db.query(ModelResponse).filter_by(run_id=run.id, stage=run.current_stage).all()
-        all_done = responses and all(r.status in ("completed", "failed") for r in responses)
+        debater_responses = [r for r in responses if r.provider != "moderator"]
+        all_done = debater_responses and all(r.status in ("completed", "failed") for r in debater_responses)
 
         if run.mode == "parallel":
             if all_done:
@@ -266,6 +279,21 @@ class Orchestrator:
 
         db.commit()
 
+
+    @classmethod
+    def resume_discussion(cls, db: Session, run_id: str) -> DiscussionRun:
+        run = db.query(DiscussionRun).filter_by(id=run_id).first()
+        if not run:
+            raise ValueError("Sesi diskusi tidak ditemukan.")
+        if run.status != "stopped":
+            raise ValueError(f"Hanya sesi dengan status 'stopped' yang dapat dilanjutkan (status saat ini: '{run.status}').")
+        if run.current_stage == "completed":
+            raise ValueError("Sesi diskusi telah selesai secara permanen dan tidak dapat dilanjutkan.")
+        run.status = "awaiting_input"
+        db.commit()
+        db.refresh(run)
+        return run
+
     @classmethod
     async def advance_debate_stage(cls, db: Session, run_id: str) -> DiscussionRun:
         run = db.query(DiscussionRun).filter_by(id=run_id).first()
@@ -274,8 +302,8 @@ class Orchestrator:
         if run.mode != "debate":
             raise ValueError("Hanya sesi debat yang memiliki alur tahapan multi-stage.")
 
-        if run.status in ("stopped", "completed"):
-            raise ValueError("Sesi diskusi telah dihentikan atau telah selesai.")
+        if run.status != "awaiting_input":
+            raise ValueError(f"Hanya sesi dengan status 'awaiting_input' yang dapat dimajukan (status saat ini: '{run.status}').")
 
         current_stage = run.current_stage
 
@@ -294,10 +322,12 @@ class Orchestrator:
             active_round = db.query(DiscussionRound).filter_by(
                 run_id=run.id, round_number=run.current_round
             ).first()
+            if active_round:
+                active_round.stage = "cross_critique"
 
             resp_data = [{"provider": r.provider, "content": r.content} for r in initial_responses]
 
-            # Generate cross critiques for each provider
+            # Generate cross critiques for each provider (prevent duplicate rows)
             for r in initial_responses:
                 critique_prompt = PromptBuilder.build_critique_prompt(
                     query=run.query,
@@ -310,18 +340,28 @@ class Orchestrator:
                 provider_cfg = db.query(ProviderConfiguration).filter_by(id=r.provider).first()
                 is_api = bool(provider_cfg and provider_cfg.default_mode == "api" and provider_manager.is_api_configured(r.provider))
 
-                critique_resp = ModelResponse(
+                existing = db.query(ModelResponse).filter_by(
                     run_id=run.id,
                     round_id=active_round.id if active_round else None,
                     provider=r.provider,
-                    model_id=r.model_id,
-                    stage="cross_critique",
-                    integration_mode="api" if is_api else "manual",
-                    prompt_used=critique_prompt,
-                    content="",
-                    status="pending"
-                )
-                db.add(critique_resp)
+                    stage="cross_critique"
+                ).first()
+
+                if existing:
+                    existing.prompt_used = critique_prompt
+                else:
+                    critique_resp = ModelResponse(
+                        run_id=run.id,
+                        round_id=active_round.id if active_round else None,
+                        provider=r.provider,
+                        model_id=r.model_id,
+                        stage="cross_critique",
+                        integration_mode="api" if is_api else "manual",
+                        prompt_used=critique_prompt,
+                        content="",
+                        status="pending"
+                    )
+                    db.add(critique_resp)
 
             db.commit()
 
@@ -339,6 +379,8 @@ class Orchestrator:
             active_round = db.query(DiscussionRound).filter_by(
                 run_id=run.id, round_number=run.current_round
             ).first()
+            if active_round:
+                active_round.stage = "rebuttal"
 
             # Gather initial and critiques
             initial_responses = db.query(ModelResponse).filter_by(
@@ -363,18 +405,28 @@ class Orchestrator:
                 provider_cfg = db.query(ProviderConfiguration).filter_by(id=r.provider).first()
                 is_api = bool(provider_cfg and provider_cfg.default_mode == "api" and provider_manager.is_api_configured(r.provider))
 
-                reb_resp = ModelResponse(
+                existing = db.query(ModelResponse).filter_by(
                     run_id=run.id,
                     round_id=active_round.id if active_round else None,
                     provider=r.provider,
-                    model_id=r.model_id,
-                    stage="rebuttal",
-                    integration_mode="api" if is_api else "manual",
-                    prompt_used=rebuttal_prompt,
-                    content="",
-                    status="pending"
-                )
-                db.add(reb_resp)
+                    stage="rebuttal"
+                ).first()
+
+                if existing:
+                    existing.prompt_used = rebuttal_prompt
+                else:
+                    reb_resp = ModelResponse(
+                        run_id=run.id,
+                        round_id=active_round.id if active_round else None,
+                        provider=r.provider,
+                        model_id=r.model_id,
+                        stage="rebuttal",
+                        integration_mode="api" if is_api else "manual",
+                        prompt_used=rebuttal_prompt,
+                        content="",
+                        status="pending"
+                    )
+                    db.add(reb_resp)
 
             db.commit()
 
@@ -405,6 +457,8 @@ class Orchestrator:
                 active_round = db.query(DiscussionRound).filter_by(
                     run_id=run.id, round_number=run.current_round
                 ).first()
+                if active_round:
+                    active_round.stage = "final_synthesis"
 
                 initial = db.query(ModelResponse).filter_by(run_id=run.id, stage="initial_analysis", status="completed").all()
                 critiques = db.query(ModelResponse).filter_by(run_id=run.id, stage="cross_critique", status="completed").all()
@@ -424,19 +478,28 @@ class Orchestrator:
                     document_chunks=doc_chunks
                 )
 
-                # Create synthesis placeholder response
-                synth_resp = ModelResponse(
+                # Store or update synthesis placeholder
+                existing_synth = db.query(ModelResponse).filter_by(
                     run_id=run.id,
-                    round_id=active_round.id if active_round else None,
-                    provider="moderator",
-                    model_id="council_moderator",
                     stage="final_synthesis",
-                    integration_mode="manual",
-                    prompt_used=synthesis_prompt,
-                    content="",
-                    status="pending"
-                )
-                db.add(synth_resp)
+                    provider="moderator"
+                ).first()
+
+                if existing_synth:
+                    existing_synth.prompt_used = synthesis_prompt
+                else:
+                    synth_resp = ModelResponse(
+                        run_id=run.id,
+                        round_id=active_round.id if active_round else None,
+                        provider="moderator",
+                        model_id="council_moderator",
+                        stage="final_synthesis",
+                        integration_mode="manual",
+                        prompt_used=synthesis_prompt,
+                        content="",
+                        status="pending"
+                    )
+                    db.add(synth_resp)
                 db.commit()
 
         elif current_stage in ("final_synthesis", "completed"):
@@ -452,6 +515,7 @@ class Orchestrator:
         run_id: str,
         raw_synthesis: str,
         moderator_provider: str = "human_moderator",
+        allow_partial: bool = False,
         problem_summary: Optional[str] = None,
         consensus_points: Optional[str] = None,
         disagreements: Optional[str] = None,
@@ -464,8 +528,23 @@ class Orchestrator:
         run = db.query(DiscussionRun).filter_by(id=run_id).first()
         if not run:
             raise ValueError("Sesi diskusi tidak ditemukan.")
-        if run.status == "stopped":
-            raise ValueError("Sesi diskusi telah dihentikan dan tidak dapat menerima sintesis baru.")
+        if run.status == "completed":
+            raise ValueError("Sesi diskusi telah selesai sebelumnya.")
+
+        # Prerequisite check: must have at least 1 completed debater response
+        completed_responses_count = db.query(ModelResponse).filter(
+            ModelResponse.run_id == run.id,
+            ModelResponse.status == "completed",
+            ModelResponse.provider != "moderator"
+        ).count()
+        if completed_responses_count == 0:
+            raise ValueError("Tidak dapat membuat sintesis: belum ada respons peserta dewan yang diselesaikan dalam diskusi ini.")
+
+        if run.mode == "debate":
+            if run.current_stage != "final_synthesis" and not allow_partial:
+                raise ValueError("Tahap debat belum mencapai final_synthesis. Harap selesaikan tahapan debat atau aktifkan opsi sintesis parsial.")
+            if run.status == "stopped" and not allow_partial:
+                raise ValueError("Sesi diskusi sedang dihentikan (stopped). Lanjutkan (resume) sesi terlebih dahulu atau aktifkan opsi sintesis parsial.")
 
         # Create or update Synthesis
         synth = db.query(Synthesis).filter_by(run_id=run.id).first()
@@ -473,12 +552,14 @@ class Orchestrator:
             synth = Synthesis(
                 run_id=run.id,
                 moderator_provider=moderator_provider,
+                mode="manual_partial" if allow_partial else "manual",
                 raw_synthesis=raw_synthesis.strip()
             )
             db.add(synth)
         else:
             synth.raw_synthesis = raw_synthesis.strip()
             synth.moderator_provider = moderator_provider
+            synth.mode = "manual_partial" if allow_partial else "manual"
 
         # Auto-extract or fill structured sections if provided
         synth.problem_summary = problem_summary or cls._extract_section(raw_synthesis, "Ringkasan Masalah")
@@ -490,7 +571,7 @@ class Orchestrator:
         synth.uncertainties_and_verifications = uncertainties_and_verifications or cls._extract_section(raw_synthesis, "Ketidakpastian & Kebutuhan Verifikasi")
         synth.references_cited = references_cited or cls._extract_section(raw_synthesis, "Referensi Sumber")
 
-        # Mark model response for synthesis completed
+        # Mark model response for synthesis completed if existing
         synth_resp = db.query(ModelResponse).filter_by(run_id=run.id, stage="final_synthesis").first()
         if synth_resp:
             synth_resp.status = "completed"
@@ -547,37 +628,77 @@ class Orchestrator:
         if not run:
             raise ValueError("Sesi diskusi tidak ditemukan.")
 
+        status_label = run.status.upper()
+        if run.status == "stopped":
+            status_label = "STOPPED (Dihentikan Lebih Awal - Laporan Parsial)"
+        elif run.status == "awaiting_input":
+            status_label = "AWAITING_INPUT (Menunggu Respons Peserta/Moderator)"
+        elif run.status == "completed":
+            status_label = "COMPLETED (Diskusi Selesai Penuh)"
+
         lines = [
             f"# Laporan Hasil AI Council — {run.mode.upper()}",
-            f"**Tanggal:** {run.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-            f"**Status:** {run.status}",
-            f"**Topik / Pertanyaan:**\n> {run.query}\n",
+            f"**Tanggal Pembuatan:** {run.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            f"**Status Sesi:** {status_label}",
+            f"**Tahap Terakhir:** {run.current_stage} (Putaran {run.current_round} dari {run.max_rounds})",
+            f"**Topik / Pertanyaan Penelitian:**\n> {run.query}\n",
             "---",
             "## 1. Respons Peserta AI Dewan"
         ]
 
-        responses = db.query(ModelResponse).filter_by(run_id=run.id).all()
-        for r in responses:
-            lines.append(f"\n### {r.provider.upper()} ({r.stage} - Mode: {r.integration_mode})")
-            if r.status == "completed":
-                lines.append(r.content)
-            elif r.status == "failed":
-                lines.append(f"*Gagal: {r.error_message}*")
-            else:
-                lines.append("*Status: Menunggu respons pengguna / API*")
+        # Only list actual participant debater models (exclude moderator)
+        all_responses = db.query(ModelResponse).filter_by(run_id=run.id).all()
+        debater_responses = [r for r in all_responses if r.provider != "moderator"]
+
+        completed_debaters = [r for r in debater_responses if r.status == "completed"]
+        if not completed_debaters and not any(r.status == "failed" for r in debater_responses):
+            lines.append("\n*Catatan: Belum ada respons peserta dewan yang diselesaikan sebelum laporan ini dibuat.*")
+        else:
+            stage_order = ["initial_analysis", "cross_critique", "rebuttal"]
+            stage_names = {
+                "initial_analysis": "Tahap 1: Analisis Awal (Initial Analysis)",
+                "cross_critique": "Tahap 2: Kritik Silang Antarmodel (Cross-Critique)",
+                "rebuttal": "Tahap 3: Sanggahan & Pembelaan (Rebuttal)"
+            }
+            for st in stage_order:
+                st_responses = [r for r in debater_responses if r.stage == st]
+                if not st_responses:
+                    continue
+                lines.append(f"\n### {stage_names.get(st, st.upper())}")
+                for r in st_responses:
+                    lines.append(f"\n#### Peserta: {r.provider.upper()} (Model: {r.model_id or 'manual'} | Mode: {r.integration_mode})")
+                    if r.status == "completed":
+                        lines.append(r.content)
+                    elif r.status == "failed":
+                        lines.append(f"*Gagal: {r.error_message}*")
+                    else:
+                        lines.append("*(Status: Menunggu respons / belum diisi)*")
+
+        lines.append("\n---")
+        lines.append("## 2. Sintesis Moderator AI Council\n")
 
         syntheses = db.query(Synthesis).filter_by(run_id=run.id).all()
         if syntheses:
-            lines.append("\n---")
-            lines.append("## 2. Sintesis Akhir Moderator AI Council\n")
             for s in syntheses:
-                lines.append(s.raw_synthesis)
+                prefix = ""
+                if s.mode == "manual_partial" or run.status == "stopped":
+                    prefix = "*(Catatan: Sintesis Parsial / Early Conclusion)*\n\n"
+                lines.append(f"{prefix}{s.raw_synthesis}")
+        else:
+            if run.status == "stopped":
+                lines.append("*Sintesis belum dibuat karena sesi ini dihentikan lebih awal oleh pengguna (Laporan Parsial).*")
+            elif run.current_stage != "completed":
+                lines.append("*Sintesis belum dibuat (Sesi masih dalam proses diskusi).*")
+            else:
+                lines.append("*Tidak ada sintesis yang tercatat.*")
 
         references = db.query(SourceReference).filter_by(run_id=run.id).all()
         if references:
             lines.append("\n---")
             lines.append("## 3. Sumber & Kutipan Dokumen yang Diverifikasi\n")
             for ref in references:
-                lines.append(f"- **Halaman {ref.page_number}**: \"{ref.quote}\"")
+                doc_title = ref.document.title if ref.document else "Dokumen Referensi"
+                lines.append(f"- **{doc_title}** (Halaman {ref.page_number}): *\"{ref.quote}\"*")
 
         return "\n".join(lines)
+

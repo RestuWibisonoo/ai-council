@@ -123,7 +123,8 @@ def test_cannot_advance_stopped_discussion(client):
     # Try advancing
     adv_res = client.post(f"/api/discussions/{run_id}/advance")
     assert adv_res.status_code == 400
-    assert "telah dihentikan" in adv_res.json()["detail"]
+    assert "stopped" in adv_res.json()["detail"].lower()
+
 
 
 def test_max_rounds_validation(client):
@@ -135,3 +136,150 @@ def test_max_rounds_validation(client):
         "max_rounds": 10
     })
     assert res.status_code == 422  # Pydantic validation error
+
+
+def test_cannot_submit_response_to_stopped_run(client):
+    """Cannot mutate or add responses to a stopped debate session."""
+    init_res = client.post("/api/discussions", json={
+        "query": "[TEST] Uji mutasi sesi stopped",
+        "mode": "debate",
+        "selected_providers": ["chatgpt"]
+    })
+    run_data = init_res.json()
+    run_id = run_data["id"]
+    resp_id = run_data["responses"][0]["id"]
+
+    # Stop run
+    client.post(f"/api/discussions/{run_id}/stop")
+
+    # Attempt manual response submission
+    sub_res = client.post(f"/api/discussions/{run_id}/responses", json={
+        "response_id": resp_id,
+        "content": "[TEST DATA] Jawaban sementara",
+        "status": "completed"
+    })
+    assert sub_res.status_code == 400
+    assert "dihentikan" in sub_res.json()["detail"].lower()
+
+
+def test_resume_stopped_discussion_and_continue(client):
+    """Resuming a stopped run restores awaiting_input state and allows continuing."""
+    init_res = client.post("/api/discussions", json={
+        "query": "[TEST] Uji mekanisme resume diskusi",
+        "mode": "debate",
+        "selected_providers": ["chatgpt", "claude"]
+    })
+    run_data = init_res.json()
+    run_id = run_data["id"]
+    resp_id = run_data["responses"][0]["id"]
+
+    # 1. Stop run
+    stop_res = client.post(f"/api/discussions/{run_id}/stop")
+    assert stop_res.status_code == 200
+    assert stop_res.json()["status"] == "stopped"
+
+    # 2. Resume run
+    resume_res = client.post(f"/api/discussions/{run_id}/resume")
+    assert resume_res.status_code == 200
+    assert resume_res.json()["status"] == "awaiting_input"
+
+    # 3. Now submit response succeeds
+    sub_res = client.post(f"/api/discussions/{run_id}/responses", json={
+        "response_id": resp_id,
+        "content": "[TEST DATA] Analisis resume berhasil",
+        "status": "completed"
+    })
+    assert sub_res.status_code == 200
+    assert sub_res.json()["status"] == "completed"
+
+
+def test_cannot_create_synthesis_on_empty_run(client):
+    """Cannot create moderator synthesis if 0 debater responses exist."""
+    init_res = client.post("/api/discussions", json={
+        "query": "[TEST] Uji pembuatan sintesis tanpa respons",
+        "mode": "debate",
+        "selected_providers": ["chatgpt"]
+    })
+    run_id = init_res.json()["id"]
+
+    synth_res = client.post(f"/api/discussions/{run_id}/synthesis", json={
+        "run_id": run_id,
+        "raw_synthesis": "[TEST] Sintesis fiktif tanpa masukan peserta",
+        "allow_partial": True
+    })
+    assert synth_res.status_code == 400
+    assert "belum ada respons peserta dewan" in synth_res.json()["detail"].lower()
+
+
+def test_partial_synthesis_on_stopped_run(client):
+    """Partial synthesis is permitted when explicitly opted in on a run with existing responses."""
+    init_res = client.post("/api/discussions", json={
+        "query": "[TEST] Evaluasi parsial debate",
+        "mode": "debate",
+        "selected_providers": ["chatgpt", "claude"]
+    })
+    run_data = init_res.json()
+    run_id = run_data["id"]
+    resp1_id = run_data["responses"][0]["id"]
+
+    # Submit 1 response
+    client.post(f"/api/discussions/{run_id}/responses", json={
+        "response_id": resp1_id,
+        "content": "[TEST DATA] Analisis awal satu peserta",
+        "status": "completed"
+    })
+
+    # Stop run
+    client.post(f"/api/discussions/{run_id}/stop")
+
+    # Submitting without allow_partial should fail
+    fail_synth = client.post(f"/api/discussions/{run_id}/synthesis", json={
+        "run_id": run_id,
+        "raw_synthesis": "Sintesis tanpa izin parsial",
+        "allow_partial": False
+    })
+    assert fail_synth.status_code == 400
+
+    # Submitting with allow_partial=True succeeds
+    ok_synth = client.post(f"/api/discussions/{run_id}/synthesis", json={
+        "run_id": run_id,
+        "raw_synthesis": "## Ringkasan Masalah\nAnalisis parsial selesai.",
+        "allow_partial": True
+    })
+    assert ok_synth.status_code == 200
+    assert ok_synth.json()["success"] is True
+
+    # Verify run completed
+    run_check = client.get(f"/api/discussions/{run_id}").json()
+    assert run_check["status"] == "completed"
+
+
+def test_export_stopped_incomplete_run_never_fabricates(client):
+    """Export of stopped run must accurately document stopped state and never fabricate responses."""
+    init_res = client.post("/api/discussions", json={
+        "query": "[TEST] Diskusi dihentikan tanpa jawaban",
+        "mode": "debate",
+        "selected_providers": ["chatgpt", "claude", "gemini"]
+    })
+    run_id = init_res.json()["id"]
+
+    # Stop run immediately
+    client.post(f"/api/discussions/{run_id}/stop")
+
+    export_res = client.get(f"/api/discussions/{run_id}/export")
+    assert export_res.status_code == 200
+    report_text = export_res.text
+
+    # Verify header documents stopped state
+    assert "STOPPED" in report_text
+    assert "Dihentikan Lebih Awal" in report_text
+
+    # Verify debater section notes no responses completed
+    assert "Belum ada respons peserta dewan yang diselesaikan" in report_text
+
+    # Verify NO moderator row is printed as a participant in Section 1
+    assert "MODERATOR (final_synthesis" not in report_text
+
+    # Verify synthesis section notes it was not generated
+    assert "Sintesis belum dibuat karena sesi ini dihentikan lebih awal" in report_text
+

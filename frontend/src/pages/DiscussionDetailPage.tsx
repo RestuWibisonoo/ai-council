@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Download,
   StopCircle,
+  Play,
   FastForward,
   Award,
   BookOpen,
@@ -38,6 +39,7 @@ export const DiscussionDetailPage: React.FC = () => {
   // Modal states
   const [activeManualBridgeResp, setActiveManualBridgeResp] = useState<ModelResponse | null>(null);
   const [isSynthesisModalOpen, setIsSynthesisModalOpen] = useState(false);
+  const [isPartialSynthesis, setIsPartialSynthesis] = useState(false);
 
   const loadRun = async () => {
     if (!id) return;
@@ -77,13 +79,17 @@ export const DiscussionDetailPage: React.FC = () => {
     modelId?: string
   ) => {
     if (!id) return;
-    await api.submitManualResponse(id, {
-      response_id: responseId,
-      content,
-      model_id: modelId,
-      status: 'completed',
-    });
-    await loadRun();
+    try {
+      await api.submitManualResponse(id, {
+        response_id: responseId,
+        content,
+        model_id: modelId,
+        status: 'completed',
+      });
+      await loadRun();
+    } catch (err: any) {
+      throw err;
+    }
   };
 
   const handleAdvanceStage = async () => {
@@ -101,9 +107,23 @@ export const DiscussionDetailPage: React.FC = () => {
 
   const handleStopDiscussion = async () => {
     if (!id) return;
-    if (confirm('Apakah Anda yakin ingin menghentikan sesi diskusi ini?')) {
-      await api.stopDiscussion(id);
+    if (confirm('Apakah Anda yakin ingin menghentikan sementara sesi diskusi ini?')) {
+      try {
+        await api.stopDiscussion(id);
+        await loadRun();
+      } catch (err: any) {
+        alert(err.message || 'Gagal menghentikan diskusi');
+      }
+    }
+  };
+
+  const handleResumeDiscussion = async () => {
+    if (!id) return;
+    try {
+      await api.resumeDiscussion(id);
       await loadRun();
+    } catch (err: any) {
+      alert(err.message || 'Gagal melanjutkan diskusi');
     }
   };
 
@@ -112,8 +132,15 @@ export const DiscussionDetailPage: React.FC = () => {
     moderator_provider?: string;
   }) => {
     if (!id) return;
-    await api.submitSynthesis(id, data);
-    await loadRun();
+    try {
+      await api.submitSynthesis(id, {
+        ...data,
+        allow_partial: isPartialSynthesis || run?.status === 'stopped',
+      });
+      await loadRun();
+    } catch (err: any) {
+      throw err;
+    }
   };
 
   if (isLoading) {
@@ -152,18 +179,27 @@ export const DiscussionDetailPage: React.FC = () => {
     );
   };
 
+  // Debater models only (exclude moderator placeholder from debater responses)
   const currentStageResponses = run.responses.filter(
-    (r) => r.stage === run.current_stage || run.mode === 'parallel'
+    (r) => r.provider !== 'moderator' && (r.stage === run.current_stage || run.mode === 'parallel')
   );
+
+  const completedInCurrentStage = currentStageResponses.filter((r) => r.status === 'completed');
+  const hasMinimumResponses = completedInCurrentStage.length > 0;
 
   const canAdvanceStage =
     run.mode === 'debate' &&
     run.current_stage !== 'completed' &&
-    run.status !== 'stopped';
+    run.current_stage !== 'final_synthesis' &&
+    run.status === 'awaiting_input';
+
+  const anyResponseCompletedInRun = run.responses.some(
+    (r) => r.provider !== 'moderator' && r.status === 'completed'
+  );
 
   // Get active synthesis prompt for modal
   const synthesisPlaceholderResp = run.responses.find((r) => r.stage === 'final_synthesis');
-  const synthPrompt = synthesisPlaceholderResp?.prompt_used || 'Prompt sintesis moderator...';
+  const synthPrompt = synthesisPlaceholderResp?.prompt_used || 'Prompt sintesis moderator AI Council...';
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-7">
@@ -191,6 +227,11 @@ export const DiscussionDetailPage: React.FC = () => {
               <span className="text-xs text-slate-400 font-mono">
                 ID: {run.id.slice(0, 8)}
               </span>
+              {run.status === 'stopped' && (
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold uppercase bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  Dihentikan (Stopped)
+                </span>
+              )}
             </div>
             <h1 className="text-lg font-bold text-white mt-0.5 line-clamp-1">
               {run.query}
@@ -199,7 +240,7 @@ export const DiscussionDetailPage: React.FC = () => {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <a
             href={api.getExportUrl(run.id)}
             download
@@ -219,11 +260,22 @@ export const DiscussionDetailPage: React.FC = () => {
             </button>
           )}
 
+          {run.status === 'stopped' && run.current_stage !== 'completed' && (
+            <button
+              onClick={handleResumeDiscussion}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-lg shadow-emerald-600/20"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Lanjutkan Diskusi</span>
+            </button>
+          )}
+
           {canAdvanceStage && (
             <button
               onClick={handleAdvanceStage}
-              disabled={isAdvancing}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20"
+              disabled={isAdvancing || !hasMinimumResponses}
+              title={!hasMinimumResponses ? 'Harap isi minimal 1 respons sebelum lanjut' : undefined}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/20"
             >
               <FastForward className="w-4 h-4 fill-current" />
               <span>
@@ -238,15 +290,36 @@ export const DiscussionDetailPage: React.FC = () => {
 
           {run.current_stage === 'final_synthesis' && run.status !== 'completed' && (
             <button
-              onClick={() => setIsSynthesisModalOpen(true)}
+              onClick={() => {
+                setIsPartialSynthesis(false);
+                setIsSynthesisModalOpen(true);
+              }}
               className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-lg shadow-indigo-600/20"
             >
               <Award className="w-4 h-4" />
               <span>Isi Sintesis Konsensus</span>
             </button>
           )}
+
+          {/* Partial Synthesis option if stopped or early conclusion desired */}
+          {(run.status === 'stopped' || (run.mode === 'debate' && run.current_stage !== 'final_synthesis')) &&
+            run.status !== 'completed' &&
+            anyResponseCompletedInRun && (
+              <button
+                onClick={() => {
+                  setIsPartialSynthesis(true);
+                  setIsSynthesisModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-indigo-950/40 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
+                title="Tutup diskusi sekarang dan simpan sintesis atas respons yang tersedia"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>Sintesis Parsial</span>
+              </button>
+            )}
         </div>
       </div>
+
 
       {/* Debate Timeline (If in Debate Mode) */}
       {run.mode === 'debate' && (
@@ -277,6 +350,13 @@ export const DiscussionDetailPage: React.FC = () => {
 
       {/* Model Responses Grid */}
       <div>
+        {!hasMinimumResponses && run.mode === 'debate' && run.current_stage !== 'final_synthesis' && run.status === 'awaiting_input' && (
+          <div className="p-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
+            <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
+            <span>Harap salin dan isi minimal 1 respons AI di bawah ini sebelum melanjutkan ke tahap debat berikutnya.</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider">
             Respons Dewan AI ({run.current_stage.replace('_', ' ')})
@@ -286,6 +366,7 @@ export const DiscussionDetailPage: React.FC = () => {
             {currentStageResponses.length} respons selesai
           </span>
         </div>
+
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {currentStageResponses.map((resp) => {

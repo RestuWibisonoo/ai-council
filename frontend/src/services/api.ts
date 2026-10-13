@@ -227,6 +227,7 @@ export const api = {
   async submitSynthesis(runId: string, data: {
     raw_synthesis: string;
     moderator_provider?: string;
+    allow_partial?: boolean;
     problem_summary?: string;
     consensus_points?: string;
     disagreements?: string;
@@ -252,9 +253,24 @@ export const api = {
     const res = await fetch(`${API_BASE}/discussions/${runId}/stop`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error('Gagal menghentikan diskusi');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Gagal menghentikan diskusi');
+    }
     return res.json();
   },
+
+  async resumeDiscussion(runId: string): Promise<DiscussionRun> {
+    const res = await fetch(`${API_BASE}/discussions/${runId}/resume`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Gagal melanjutkan diskusi');
+    }
+    return res.json();
+  },
+
 
   getExportUrl(runId: string): string {
     return `${API_BASE}/discussions/${runId}/export`;

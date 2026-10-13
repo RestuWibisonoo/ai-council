@@ -77,7 +77,8 @@ def submit_response(
         )
         return resp
     except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
+        status_code = status.HTTP_404_NOT_FOUND if "tidak ditemukan" in str(ve).lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
@@ -105,6 +106,7 @@ def submit_synthesis(
             run_id=run_id,
             raw_synthesis=payload.raw_synthesis,
             moderator_provider=payload.moderator_provider,
+            allow_partial=payload.allow_partial,
             problem_summary=payload.problem_summary,
             consensus_points=payload.consensus_points,
             disagreements=payload.disagreements,
@@ -127,7 +129,19 @@ def stop_discussion(run_id: str, db: Session = Depends(get_db)):
         run = Orchestrator.stop_discussion(db=db, run_id=run_id)
         return run
     except ValueError as ve:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
+        status_code = status.HTTP_404_NOT_FOUND if "tidak ditemukan" in str(ve).lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(ve))
+
+
+@router.post("/{run_id}/resume", response_model=DiscussionRunOut)
+def resume_discussion(run_id: str, db: Session = Depends(get_db)):
+    try:
+        run = Orchestrator.resume_discussion(db=db, run_id=run_id)
+        return run
+    except ValueError as ve:
+        status_code = status.HTTP_404_NOT_FOUND if "tidak ditemukan" in str(ve).lower() else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(ve))
+
 
 
 @router.get("/{run_id}/export")
