@@ -40,7 +40,14 @@ class Orchestrator:
 
         selected_providers = selected_providers or ["chatgpt", "claude", "gemini"]
         linked_document_ids = linked_document_ids or []
-        bounded_max_rounds = max(1, min(max_rounds, settings.max_debate_rounds))
+        if max_rounds > settings.max_debate_rounds:
+            raise ValueError(
+                f"Jumlah putaran debat ({max_rounds}) melebihi batas maksimal {settings.max_debate_rounds} putaran."
+            )
+        if max_rounds < 1:
+            raise ValueError("Jumlah putaran debat minimal 1 putaran.")
+        bounded_max_rounds = max_rounds
+
 
         # 1. Create or link Conversation
         title = conversation_title or (query[:50] + ("..." if len(query) > 50 else ""))

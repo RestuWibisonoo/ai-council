@@ -283,3 +283,34 @@ def test_export_stopped_incomplete_run_never_fabricates(client):
     # Verify synthesis section notes it was not generated
     assert "Sintesis belum dibuat karena sesi ini dihentikan lebih awal" in report_text
 
+
+def test_config_rejects_more_than_three_rounds():
+    """Runtime Settings must reject max_debate_rounds >= 4."""
+    from app.config import Settings
+    from pydantic import ValidationError
+
+    # Valid values
+    s3 = Settings(max_debate_rounds=3)
+    assert s3.max_debate_rounds == 3
+
+    # Invalid value >= 4 must be strictly rejected
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(max_debate_rounds=4)
+    assert "melebihi batas maksimal 3 putaran" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_rejects_more_than_three_rounds(db_session):
+    """Orchestrator.create_discussion_run must reject max_rounds >= 4."""
+    from app.services.orchestrator import Orchestrator
+
+    with pytest.raises(ValueError) as exc:
+        await Orchestrator.create_discussion_run(
+            db=db_session,
+            query="[TEST] Uji batas ronde",
+            mode="debate",
+            max_rounds=5
+        )
+    assert "melebihi batas maksimal" in str(exc.value)
+
+
