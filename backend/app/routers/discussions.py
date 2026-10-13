@@ -181,6 +181,8 @@ def export_report(
         )
     except ValueError as ve:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Gagal menghasilkan laporan: {str(e)}")
 
 
 # Conversation endpoints

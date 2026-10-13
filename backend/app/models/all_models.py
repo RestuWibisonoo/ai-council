@@ -225,6 +225,8 @@ class SourceReference(Base):
     source_type = Column(String(50), default="document")  # "document", "notebooklm"
 
     run = relationship("DiscussionRun", back_populates="source_references")
+    document = relationship("Document")
+    chunk = relationship("DocumentChunk")
 
 
 class UsageRecord(Base):

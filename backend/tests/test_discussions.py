@@ -171,3 +171,48 @@ def test_continue_parallel_to_debate(client):
     assert "text/plain" in export_txt.headers.get("content-type", "")
     assert f'filename="ai_council_report_{par_run_id[:8]}.txt"' in export_txt.headers.get("content-disposition", "")
 
+
+def test_export_discussion_with_source_references(client, db_session):
+    from app.models.all_models import Document, SourceReference
+
+    # 1. Create discussion
+    resp = client.post("/api/discussions", json={
+        "query": "Evaluasi arsitektur cloud storage dengan dokumen referensi.",
+        "mode": "parallel",
+        "selected_providers": ["chatgpt"]
+    })
+    assert resp.status_code == 201
+    run_id = resp.json()["id"]
+
+    # 2. Add document and source reference
+    doc = Document(
+        title="Jurnal Arsitektur Cloud",
+        filename="cloud_arch.pdf",
+        original_name="cloud_arch.pdf",
+        file_type="pdf"
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    ref = SourceReference(
+        run_id=run_id,
+        document_id=doc.id,
+        quote="ZFS relatif stabil karena pemindahan layanan pada berkas lokal.",
+        page_number=4,
+        relevance_score=0.95
+    )
+    db_session.add(ref)
+    db_session.commit()
+
+    # 3. Export as markdown and plain text
+    exp_md = client.get(f"/api/discussions/{run_id}/export")
+    assert exp_md.status_code == 200
+    assert "Jurnal Arsitektur Cloud" in exp_md.text
+    assert "Halaman 4" in exp_md.text
+    assert "ZFS relatif stabil" in exp_md.text
+
+    exp_txt = client.get(f"/api/discussions/{run_id}/export?format=txt")
+    assert exp_txt.status_code == 200
+    assert "Jurnal Arsitektur Cloud" in exp_txt.text
+    assert "Halaman 4" in exp_txt.text
+

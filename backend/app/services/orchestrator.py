@@ -10,6 +10,7 @@ from app.models.all_models import (
     Critique,
     Synthesis,
     SourceReference,
+    Document,
     Message,
     ProviderConfiguration,
     UsageRecord
@@ -814,7 +815,13 @@ class Orchestrator:
             lines.append("\n---")
             lines.append("## 3. Sumber & Kutipan Dokumen yang Diverifikasi\n")
             for ref in references:
-                doc_title = ref.document.title if ref.document else "Dokumen Referensi"
+                doc_title = "Dokumen Referensi"
+                if hasattr(ref, "document") and ref.document and getattr(ref.document, "title", None):
+                    doc_title = ref.document.title
+                elif ref.document_id:
+                    doc = db.query(Document).filter_by(id=ref.document_id).first()
+                    if doc and doc.title:
+                        doc_title = doc.title
                 lines.append(f"- **{doc_title}** (Halaman {ref.page_number}): *\"{ref.quote}\"*")
 
         return "\n".join(lines)
