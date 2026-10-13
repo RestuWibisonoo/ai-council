@@ -1,0 +1,49 @@
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional
+
+# Base directory for the repository
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+DATA_DIR = BASE_DIR / "data"
+UPLOAD_DIR = DATA_DIR / "uploads"
+
+# Ensure directories exist
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class Settings(BaseSettings):
+    app_name: str = "AI Council"
+    app_version: str = "1.0.0"
+    debug: bool = False
+    host: str = "127.0.0.1"
+    port: int = 8000
+    
+    # Database
+    database_url: str = f"sqlite:///{DATA_DIR}/ai_council.db"
+    
+    # Paths
+    base_dir: Path = BASE_DIR
+    data_dir: Path = DATA_DIR
+    upload_dir: Path = UPLOAD_DIR
+    
+    # Limits & Security
+    max_upload_size_bytes: int = 25 * 1024 * 1024  # 25 MB
+    allowed_file_extensions: list[str] = [".pdf", ".txt", ".md"]
+    max_debate_rounds: int = 5
+    default_debate_rounds: int = 2
+    api_timeout_seconds: float = 60.0
+
+    # API Keys (optional; read from environment or updated via encrypted/local settings)
+    openai_api_key: Optional[str] = None
+    anthropic_api_key: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+
+settings = Settings()
