@@ -20,6 +20,7 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
   onSubmit,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
   const [responseText, setResponseText] = useState('');
   const [modelIdentity, setModelIdentity] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,6 +56,42 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
       setTimeout(() => setCopied(false), 2500);
     } catch {
       setError('Gagal menyalin otomatis. Silakan blok dan salin teks prompt manual.');
+    }
+  };
+
+  const handlePlaywrightFill = async () => {
+    const name = providerDisplayName.toLowerCase();
+    const provider = name.includes('gemini') || name.includes('google')
+      ? 'gemini'
+      : name.includes('claude') || name.includes('anthropic')
+        ? 'claude'
+        : name.includes('notebook')
+          ? 'notebooklm'
+          : name.includes('chatgpt') || name.includes('openai')
+            ? 'chatgpt'
+            : null;
+    if (!provider) {
+      setError('Provider ini belum didukung oleh Playwright Bridge.');
+      return;
+    }
+    setAutoFilling(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/playwright-bridge/open-fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, prompt: responseItem?.prompt_used || '' }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.detail || 'Playwright Bridge gagal membuka browser.');
+      setCopied(false);
+      setError(null);
+      // A brief inline status tells the user to review and send in the visible browser.
+      window.alert(payload.message || 'Prompt dimasukkan. Periksa browser lalu kirim secara manual.');
+    } catch (err: any) {
+      setError(err.message || 'Playwright Bridge gagal. Pastikan backend lokal dan Chromium sudah disiapkan.');
+    } finally {
+      setAutoFilling(false);
     }
   };
 
@@ -133,7 +170,7 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
           )}
 
           {/* Step 1 & 2 Action Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
               type="button"
               onClick={handleCopyPrompt}
@@ -156,6 +193,17 @@ export const ManualBridgeModal: React.FC<ManualBridgeModalProps> = ({
               <span>2. Buka {providerDisplayName} Resmi</span>
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={handlePlaywrightFill}
+            disabled={autoFilling}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-medium text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white transition shadow-sm"
+            title="Membuka browser lokal dan mengisi prompt tanpa mengirim otomatis"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>{autoFilling ? 'Menyiapkan browser...' : '3. Isi via Playwright'}</span>
+          </button>
 
           {/* Prompt Preview Box */}
           <div>
