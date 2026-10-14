@@ -32,11 +32,6 @@ export const ResearchWorkspacePage: React.FC = () => {
   const [newDesc, setNewDesc] = useState('');
   const [newQuestion, setNewQuestion] = useState('');
 
-  // NotebookLM Bridge State
-  const [notebookLMPrompt, setNotebookLMPrompt] = useState('');
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
-  const [notebookLMResponse, setNotebookLMResponse] = useState('');
-  const [notebookLMCitations, setNotebookLMCitations] = useState('');
   const [savedNotes, setSavedNotes] = useState('');
   const [isSavingNotes, setIsSavingNotes] = useState(false);
 
@@ -67,16 +62,6 @@ export const ResearchWorkspacePage: React.FC = () => {
         setDocuments(docs);
         setConversations(convs);
       });
-
-      // Generate NotebookLM prompt
-      if (selectedProject.research_question) {
-        api.getNotebookLMPrompt(
-          selectedProject.research_question,
-          selectedProject.description || undefined
-        ).then((res) => {
-          setNotebookLMPrompt(res.prompt);
-        });
-      }
     }
   }, [selectedProject]);
 
@@ -126,26 +111,6 @@ export const ResearchWorkspacePage: React.FC = () => {
     }
   };
 
-  const handleCopyNotebookPrompt = async () => {
-    if (!notebookLMPrompt) return;
-    try {
-      await navigator.clipboard.writeText(notebookLMPrompt);
-      setCopiedPrompt(true);
-      setTimeout(() => setCopiedPrompt(false), 2000);
-    } catch {}
-  };
-
-  const handleSaveNotebookLMResponse = () => {
-    if (!notebookLMResponse.trim()) return;
-    const appendText = `\n\n--- [Kutipan Sumber NotebookLM] ---\n${notebookLMResponse}\n${
-      notebookLMCitations ? `Kutipan/Halaman: ${notebookLMCitations}` : ''
-    }\n----------------------------------`;
-    setSavedNotes((prev) => prev + appendText);
-    setNotebookLMResponse('');
-    setNotebookLMCitations('');
-    alert('Respons NotebookLM berhasil ditambahkan ke Catatan Riset!');
-  };
-
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-7">
       {/* Header */}
@@ -159,7 +124,7 @@ export const ResearchWorkspacePage: React.FC = () => {
             Ruang Penelitian Terpadu
           </h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            Kelola proyek penelitian, pertanyaan sentral, integrasi NotebookLM, dan sumber dokumen dalam satu tempat.
+            Kelola proyek penelitian, pertanyaan sentral, catatan sintesis, dan sumber dokumen dalam satu tempat.
           </p>
         </div>
 
@@ -240,74 +205,6 @@ export const ResearchWorkspacePage: React.FC = () => {
                   <p className="text-sm font-semibold text-slate-200">
                     "{selectedProject.research_question || 'Silakan tentukan pertanyaan penelitian'}"
                   </p>
-                </div>
-              </div>
-
-              {/* NotebookLM Manual Bridge Workflow Section */}
-              <div className="p-6 rounded-2xl bg-slate-900/80 border border-indigo-500/30 backdrop-blur-md space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-5 h-5 text-indigo-400" />
-                    <h3 className="font-bold text-base text-white">
-                      Jalur Manual NotebookLM
-                    </h3>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      Resmi
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleCopyNotebookPrompt}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 text-xs font-semibold transition"
-                    >
-                      {copiedPrompt ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedPrompt ? 'Prompt Disalin!' : 'Salin Prompt NotebookLM'}</span>
-                    </button>
-                    <a
-                      href="https://notebooklm.google.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition shadow-sm"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Buka NotebookLM Resmi</span>
-                    </a>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap max-h-36 overflow-y-auto">
-                  {notebookLMPrompt || 'Membuat prompt untuk NotebookLM...'}
-                </div>
-
-                {/* Paste NotebookLM Response back */}
-                <div className="space-y-3 pt-2">
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                    Tempel Temuan / Ekstrak dari NotebookLM
-                  </label>
-                  <textarea
-                    value={notebookLMResponse}
-                    onChange={(e) => setNotebookLMResponse(e.target.value)}
-                    placeholder="Tempelkan jawaban, kutipan, atau sintesis sumber dari NotebookLM di sini..."
-                    rows={4}
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 placeholder-slate-500 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 font-sans"
-                  />
-                  <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      type="text"
-                      value={notebookLMCitations}
-                      onChange={(e) => setNotebookLMCitations(e.target.value)}
-                      placeholder="Nomor halaman atau sumber referensi (mis: Dokumen Bab 3 hal 42)"
-                      className="flex-1 px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
-                    <button
-                      onClick={handleSaveNotebookLMResponse}
-                      disabled={!notebookLMResponse.trim()}
-                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold transition shadow-md shadow-indigo-600/20"
-                    >
-                      Tambahkan ke Catatan Riset
-                    </button>
-                  </div>
                 </div>
               </div>
 

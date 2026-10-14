@@ -167,7 +167,7 @@ class ProviderManager:
                 "id": "qwen",
                 "display_name": "Qwen / Alibaba Model Studio",
                 "is_enabled": True,
-                "default_mode": "manual",
+                "default_mode": "api",
                 "official_url": "https://www.alibabacloud.com/help/en/model-studio",
                 "selected_model": "qwen-turbo",
                 "supported_models": [
@@ -182,7 +182,7 @@ class ProviderManager:
                 "id": "deepseek",
                 "display_name": "DeepSeek API Langsung",
                 "is_enabled": True,
-                "default_mode": "manual",
+                "default_mode": "api",
                 "official_url": "https://platform.deepseek.com",
                 "selected_model": "deepseek-chat",
                 "supported_models": [
@@ -195,7 +195,7 @@ class ProviderManager:
                 "id": "chatgpt",
                 "display_name": "ChatGPT",
                 "is_enabled": True,
-                "default_mode": "manual",
+                "default_mode": "api",
                 "official_url": "https://chatgpt.com",
                 "selected_model": "gpt-4o",
                 "supported_models": ["gpt-4o", "gpt-4o-mini", "o3-mini"],
@@ -205,7 +205,7 @@ class ProviderManager:
                 "id": "claude",
                 "display_name": "Claude",
                 "is_enabled": True,
-                "default_mode": "manual",
+                "default_mode": "api",
                 "official_url": "https://claude.ai",
                 "selected_model": "claude-3-7-sonnet-20250219",
                 "supported_models": [
@@ -219,7 +219,7 @@ class ProviderManager:
                 "id": "gemini",
                 "display_name": "Gemini",
                 "is_enabled": True,
-                "default_mode": "manual",
+                "default_mode": "api",
                 "official_url": "https://gemini.google.com",
                 "selected_model": "gemini-2.5-flash",
                 "supported_models": [
@@ -228,18 +228,14 @@ class ProviderManager:
                     "gemini-1.5-flash"
                 ],
                 "usage_limit_monthly_usd": 20.0
-            },
-            {
-                "id": "notebooklm",
-                "display_name": "NotebookLM",
-                "is_enabled": True,
-                "default_mode": "manual",
-                "official_url": "https://notebooklm.google.com",
-                "selected_model": "NotebookLM Research Workspace",
-                "supported_models": ["NotebookLM Research Workspace"],
-                "usage_limit_monthly_usd": 0.0
             }
         ]
+
+        # Clean up any obsolete manual-only provider like notebooklm
+        obsolete_notebook = db.query(ProviderConfiguration).filter_by(id="notebooklm").first()
+        if obsolete_notebook:
+            db.delete(obsolete_notebook)
+            db.commit()
 
         manager = cls.get_instance()
         for item in defaults:
@@ -258,6 +254,7 @@ class ProviderManager:
                 )
                 db.add(cfg)
             else:
+                existing.default_mode = "api"
                 existing.api_key_configured = manager.is_api_configured(item["id"])
                 # Ensure supported_models are updated if new defaults exist
                 if set(item["supported_models"]) - set(existing.supported_models or []):

@@ -50,9 +50,9 @@ export const CompareModelsPage: React.FC = () => {
           <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center font-bold mb-4">
             02
           </div>
-          <h3 className="font-bold text-base text-slate-100 mb-2">Manual Bridge Fleksibel</h3>
+          <h3 className="font-bold text-base text-slate-100 mb-2">Multi-Provider Otomatis</h3>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Gunakan ChatGPT Go, Claude Free, dan Gemini Pro Anda langsung melalui tombol 1-klik tanpa memerlukan biaya langganan API berbayar.
+            Gunakan DeepSeek, Qwen, Meta Llama, Ollama Lokal, dan Gemini Pro secara otomatis melalui API bebas biaya atau kredensial langsung.
           </p>
         </div>
 

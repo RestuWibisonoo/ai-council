@@ -2,13 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   KeyRound,
   ShieldCheck,
-  CheckCircle,
-  AlertTriangle,
-  Play,
   ExternalLink,
   Bot,
-  DollarSign,
-  Cpu,
   Save,
   Check
 } from 'lucide-react';
@@ -21,7 +16,6 @@ export const ProviderSettingsPage: React.FC = () => {
   // Form states per provider
   const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
-  const [modes, setModes] = useState<Record<string, 'manual' | 'api'>>({});
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [testResults, setTestResults] = useState<Record<string, { success: boolean; msg: string }>>({});
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -30,17 +24,16 @@ export const ProviderSettingsPage: React.FC = () => {
   const loadProviders = async () => {
     try {
       const data = await api.getProviders();
-      setProviders(data);
+      // Filter out any legacy manual-only providers like NotebookLM
+      const apiProviders = data.filter((p) => p.id !== 'notebooklm');
+      setProviders(apiProviders);
       const modMap: Record<string, string> = {};
-      const modeMap: Record<string, 'manual' | 'api'> = {};
       const limMap: Record<string, number> = {};
-      data.forEach((p) => {
+      apiProviders.forEach((p) => {
         modMap[p.id] = p.selected_model;
-        modeMap[p.id] = p.default_mode;
         limMap[p.id] = p.usage_limit_monthly_usd;
       });
       setSelectedModels(modMap);
-      setModes(modeMap);
       setLimits(limMap);
     } catch (err) {
       console.error('Failed to load providers:', err);
@@ -55,13 +48,12 @@ export const ProviderSettingsPage: React.FC = () => {
 
   const handleSave = async (providerId: string) => {
     const key = apiKeys[providerId];
-    const mode = modes[providerId];
     const model = selectedModels[providerId];
     const limit = limits[providerId];
 
     try {
       await api.updateProvider(providerId, {
-        default_mode: mode,
+        default_mode: 'api',
         selected_model: model,
         usage_limit_monthly_usd: limit,
         ...(key ? { api_key: key } : {}),
@@ -108,13 +100,13 @@ export const ProviderSettingsPage: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold mb-2">
             <KeyRound className="w-3.5 h-3.5" />
-            <span>Integrasi Multi-Model</span>
+            <span>Integrasi API Multi-Model</span>
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">
             Pengaturan Provider AI Dewan
           </h1>
           <p className="text-sm text-slate-400 mt-0.5">
-            Konfigurasi konektor ChatGPT, Claude, Gemini, dan NotebookLM. Tanpa API key berbayar, Anda tetap dapat menggunakan 100% fitur via Mode Manual Bridge.
+            Konfigurasi konektor ChatGPT, Claude, Gemini, DeepSeek, Qwen, dan Ollama untuk pemanggilan model secara otomatis via API.
           </p>
         </div>
       </div>
@@ -127,7 +119,7 @@ export const ProviderSettingsPage: React.FC = () => {
             Keamanan Kredensial Terjamin
           </h4>
           <p className="leading-relaxed text-slate-400">
-            API key hanya diproses di backend dan tidak pernah dikirim ke frontend atau disimpan dalam repositori kode. Kunci tersimpan di lingkungan lokal privat yang aman.
+            API key hanya diproses di backend dan tidak pernah dikirim ke frontend atau disimpan dalam repositori kode. Kunci tersimpan di lingkungan privat yang aman.
           </p>
         </div>
       </div>
@@ -168,49 +160,18 @@ export const ProviderSettingsPage: React.FC = () => {
                     className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
                       p.api_key_configured
                         ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                        : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
                     }`}
                   >
-                    {p.api_key_configured ? 'API Siap' : 'Mode Manual'}
+                    {p.api_key_configured ? 'API Siap' : 'Kunci Belum Diisi'}
                   </span>
                 </div>
 
-                {/* Mode Selector Radio */}
                 <div className="mt-4 pt-3 border-t border-slate-800 space-y-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Mode Operasi
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setModes((prev) => ({ ...prev, [p.id]: 'manual' }))}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
-                          modes[p.id] === 'manual'
-                            ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300'
-                            : 'bg-slate-950 border-slate-800 text-slate-400'
-                        }`}
-                      >
-                        Mode A: Manual Bridge
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setModes((prev) => ({ ...prev, [p.id]: 'api' }))}
-                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition ${
-                          modes[p.id] === 'api'
-                            ? 'bg-indigo-500/15 border-indigo-500 text-indigo-300'
-                            : 'bg-slate-950 border-slate-800 text-slate-400'
-                        }`}
-                      >
-                        Mode B: Official API
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Model Choice */}
                   <div>
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-                      Pilihan Model
+                      Pilihan Model Default
                     </label>
                     <select
                       value={selectedModels[p.id] || p.selected_model}
@@ -227,32 +188,30 @@ export const ProviderSettingsPage: React.FC = () => {
                     </select>
                   </div>
 
-                  {/* API Key Input (Only if not notebooklm) */}
-                  {p.id !== 'notebooklm' && (
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                          API Key (Opsional)
-                        </label>
-                        <span className="text-[10px] text-slate-500">
-                          {p.api_key_configured ? '● Terkonfigurasi di server' : 'Belum diisi'}
-                        </span>
-                      </div>
-                      <input
-                        type="password"
-                        value={apiKeys[p.id] || ''}
-                        onChange={(e) =>
-                          setApiKeys((prev) => ({ ...prev, [p.id]: e.target.value }))
-                        }
-                        placeholder={
-                          p.api_key_configured
-                            ? '•••••••••••••••• (Kunci tersimpan aman)'
-                            : 'Masukkan API key jika ingin mode otomatis...'
-                        }
-                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
-                      />
+                  {/* API Key Input */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        API Key
+                      </label>
+                      <span className="text-[10px] text-slate-500">
+                        {p.api_key_configured ? '● Terkonfigurasi di server' : 'Belum diisi'}
+                      </span>
                     </div>
-                  )}
+                    <input
+                      type="password"
+                      value={apiKeys[p.id] || ''}
+                      onChange={(e) =>
+                        setApiKeys((prev) => ({ ...prev, [p.id]: e.target.value }))
+                      }
+                      placeholder={
+                        p.api_key_configured
+                          ? '•••••••••••••••• (Kunci tersimpan aman)'
+                          : 'Masukkan API key untuk mode otomatis...'
+                      }
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono"
+                    />
+                  </div>
 
                   {/* Monthly Usage Limit */}
                   <div>
@@ -301,7 +260,7 @@ export const ProviderSettingsPage: React.FC = () => {
                   disabled={testingId === p.id}
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
                 >
-                  {testingId === p.id ? 'Menguji...' : 'Uji Koneksi'}
+                  {testingId === p.id ? 'Menguji...' : 'Uji Koneksi API'}
                 </button>
 
                 <button

@@ -49,7 +49,7 @@ export const UsageCostPage: React.FC = () => {
           Laporan Penggunaan & Estimasi Biaya
         </h1>
         <p className="text-sm text-slate-400 mt-0.5">
-          Audit transparansi yang memisahkan penggunaan tanpa biaya (Manual Bridge) dan panggilan API berbayar.
+          Audit transparansi yang melacak penggunaan token dan estimasi biaya panggilan API multi-model.
         </p>
       </div>
 
@@ -65,7 +65,7 @@ export const UsageCostPage: React.FC = () => {
 
         <div className="p-5 rounded-2xl bg-slate-900/80 border border-emerald-500/30 backdrop-blur-md">
           <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider block mb-1">
-            Penggunaan Manual (Rp 0)
+            Respons Bebas Biaya (Rp 0)
           </span>
           <div className="text-2xl font-bold text-emerald-300">{summary?.manual_requests || 0}</div>
           <p className="text-[11px] text-emerald-500 font-medium mt-1">
@@ -122,7 +122,7 @@ export const UsageCostPage: React.FC = () => {
                             : 'bg-emerald-500/20 text-emerald-300'
                         }`}
                       >
-                        {p.default_mode === 'api' ? 'Official API' : 'Manual Bridge'}
+                        {p.default_mode === 'api' ? 'Official API' : 'Arsip Manual'}
                       </span>
                     </td>
                     <td className="py-3 font-mono">{p.requests_count}</td>

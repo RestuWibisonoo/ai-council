@@ -24,7 +24,6 @@ import {
 import { DebateTimeline } from '../components/DebateTimeline';
 import { ResponseCard } from '../components/ResponseCard';
 import { SynthesisView } from '../components/SynthesisView';
-import { ManualBridgeModal } from '../components/ManualBridgeModal';
 import { SubmitSynthesisModal } from '../components/SubmitSynthesisModal';
 
 export const DiscussionDetailPage: React.FC = () => {
@@ -41,7 +40,6 @@ export const DiscussionDetailPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Modal states
-  const [activeManualBridgeResp, setActiveManualBridgeResp] = useState<ModelResponse | null>(null);
   const [isSynthesisModalOpen, setIsSynthesisModalOpen] = useState(false);
   const [isPartialSynthesis, setIsPartialSynthesis] = useState(false);
 
@@ -86,29 +84,6 @@ export const DiscussionDetailPage: React.FC = () => {
       alert(err.message || 'Gagal memulai debat otomatis');
     } finally {
       setIsStartingAutoDebate(false);
-    }
-  };
-
-  const handleOpenManualBridge = (resp: ModelResponse) => {
-    setActiveManualBridgeResp(resp);
-  };
-
-  const handleManualBridgeSubmit = async (
-    responseId: string,
-    content: string,
-    modelId?: string
-  ) => {
-    if (!id) return;
-    try {
-      await api.submitManualResponse(id, {
-        response_id: responseId,
-        content,
-        model_id: modelId,
-        status: 'completed',
-      });
-      await loadRun();
-    } catch (err: any) {
-      throw err;
     }
   };
 
@@ -493,7 +468,7 @@ export const DiscussionDetailPage: React.FC = () => {
         {!hasMinimumResponses && run.mode === 'debate' && run.current_stage !== 'final_synthesis' && run.status === 'awaiting_input' && (
           <div className="p-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-300">
             <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-            <span>Harap salin dan isi minimal 1 respons AI di bawah ini sebelum melanjutkan ke tahap debat berikutnya.</span>
+            <span>Menunggu minimal 1 respons AI selesai sebelum melanjutkan ke tahap debat berikutnya.</span>
           </div>
         )}
 
@@ -559,7 +534,6 @@ export const DiscussionDetailPage: React.FC = () => {
                   key={resp.id}
                   response={resp}
                   officialUrl={provCfg.official_url}
-                  onOpenManualBridge={handleOpenManualBridge}
                 />
               );
             })}
@@ -576,18 +550,6 @@ export const DiscussionDetailPage: React.FC = () => {
           />
         </div>
       ) : null}
-
-      {/* Manual Bridge Modal */}
-      {activeManualBridgeResp && (
-        <ManualBridgeModal
-          isOpen={Boolean(activeManualBridgeResp)}
-          onClose={() => setActiveManualBridgeResp(null)}
-          responseItem={activeManualBridgeResp}
-          officialUrl={getProviderConfig(activeManualBridgeResp.provider).official_url}
-          providerDisplayName={getProviderConfig(activeManualBridgeResp.provider).display_name}
-          onSubmit={handleManualBridgeSubmit}
-        />
-      )}
 
       {/* Submit Synthesis Modal */}
       <SubmitSynthesisModal

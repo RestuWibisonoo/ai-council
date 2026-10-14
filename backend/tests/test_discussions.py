@@ -13,10 +13,10 @@ def test_create_parallel_discussion(client):
     assert data["mode"] == "parallel"
     assert data["status"] == "awaiting_input"
     assert len(data["responses"]) == 3
-    # Check that prompts are generated and status is pending (Manual Bridge)
+    # Check that prompts are generated and status is pending (API integration)
     for r in data["responses"]:
         assert r["status"] == "pending"
-        assert r["integration_mode"] == "manual"
+        assert r["integration_mode"] == "api"
         assert "REST" in r["prompt_used"]
 
 
@@ -215,4 +215,26 @@ def test_export_discussion_with_source_references(client, db_session):
     assert exp_txt.status_code == 200
     assert "Jurnal Arsitektur Cloud" in exp_txt.text
     assert "Halaman 4" in exp_txt.text
+
+
+def test_no_manual_bridge_in_new_discussion_flow(client):
+    """
+    Ensures that discussions created in the new architecture exclusively use
+    automated API mode and do not assign or allow Manual Bridge.
+    """
+    res = client.post("/api/discussions", json={
+        "query": "Analisis skalabilitas container Docker vs Kubernetes",
+        "mode": "debate",
+        "selected_providers": [
+            "openrouter:deepseek/deepseek-r1:free",
+            "openrouter:meta-llama/llama-3.3-70b-instruct:free"
+        ],
+        "auto_run": False
+    })
+    assert res.status_code == 201
+    data = res.json()
+    for resp in data["responses"]:
+        assert resp["integration_mode"] == "api"
+        assert resp["integration_mode"] != "manual"
+
 

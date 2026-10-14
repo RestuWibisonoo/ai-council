@@ -10,8 +10,7 @@ from app.routers import (
     research,
     documents,
     providers,
-    usage,
-    playwright_bridge as playwright_bridge_router
+    usage
 )
 
 
@@ -66,7 +65,6 @@ app.include_router(research.router)
 app.include_router(documents.router)
 app.include_router(providers.router)
 app.include_router(usage.router)
-app.include_router(playwright_bridge_router.router)
 
 
 @app.get("/")

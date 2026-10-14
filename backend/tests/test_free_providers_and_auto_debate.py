@@ -5,7 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.models import DiscussionRun, ModelResponse, Synthesis
+from app.models import DiscussionRun, DiscussionRound, ModelResponse, Synthesis
 from app.adapters.openrouter_adapter import OpenRouterAdapter
 from app.adapters.ollama_adapter import OllamaAdapter
 from app.adapters.deepseek_adapter import DeepSeekAdapter
@@ -559,4 +559,64 @@ def test_moderator_selection_zero_cost_rejection_without_paid_fallback(client: T
     # Ensure no fake synthesis was inserted
     syntheses = db_session.query(Synthesis).filter_by(run_id=run_id).all()
     assert len(syntheses) == 0
+
+
+# ---------------------------------------------------------------------------
+# 15. Two-Round Automated Debate Flow
+# ---------------------------------------------------------------------------
+def test_two_round_automated_debate_flow(client: TestClient, db_session: Session):
+    create_resp = client.post("/api/discussions", json={
+        "mode": "debate",
+        "query": "Apakah AI open-source lebih aman?",
+        "selected_providers": ["openrouter:model-a:free", "openrouter:model-b:free"],
+        "max_rounds": 2,
+        "auto_run": False
+    })
+    assert create_resp.status_code == 201
+    run_id = create_resp.json()["id"]
+
+    async def mock_execute_api_tasks(*args, **kwargs):
+        tasks = kwargs.get("tasks") or (args[1] if len(args) > 1 else args[0])
+        for resp_id, prov, mid, prompt in tasks:
+            r = db_session.query(ModelResponse).filter_by(id=resp_id).first()
+            if r:
+                r.status = "completed"
+                r.content = f"Argumen dari {mid} tahap {r.stage}."
+        db_session.commit()
+
+    async def mock_execute_synth(*args, **kwargs):
+        target_run_id = kwargs.get("run_id") or (args[1] if len(args) > 1 else args[0])
+        synth = Synthesis(
+            run_id=target_run_id,
+            moderator_provider="openrouter:model-a:free",
+            mode="api",
+            problem_summary="Konsensus 2 putaran.",
+            raw_synthesis="Sintesis 2 putaran selesai."
+        )
+        db_session.add(synth)
+        run_obj = db_session.query(DiscussionRun).filter(DiscussionRun.id == target_run_id).first()
+        if run_obj:
+            run_obj.status = "completed"
+            run_obj.current_stage = "completed"
+        db_session.commit()
+
+    with patch.object(Orchestrator, "get_db_session", staticmethod(lambda: SessionWrapper(db_session))), \
+         patch.object(Orchestrator, "_execute_api_tasks_concurrent", staticmethod(mock_execute_api_tasks)), \
+         patch.object(Orchestrator, "_execute_automated_synthesis", staticmethod(mock_execute_synth)):
+
+        asyncio.run(
+            Orchestrator.run_automated_debate(
+                run_id=run_id,
+                zero_cost_mode=True
+            )
+        )
+
+    db_session.expire_all()
+    finished = db_session.query(DiscussionRun).filter_by(id=run_id).first()
+    assert finished.status == "completed"
+    assert finished.current_round == 2
+
+    rounds = db_session.query(DiscussionRound).filter_by(run_id=run_id).all()
+    assert len(rounds) == 2
+
 

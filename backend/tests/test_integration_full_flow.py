@@ -1,11 +1,11 @@
 import pytest
 
 
-def test_full_manual_council_workflow(client):
+def test_full_council_stage_advancement_workflow(client):
     """
     End-to-End Integration Test:
-    Runs complete manual workflow from user question, model selection,
-    manual response bridge, cross-critique, rebuttal, to moderator synthesis.
+    Runs complete council debate workflow across stages: initial analysis,
+    cross-critique, rebuttal, to moderator synthesis and export.
     All data is labeled as test data.
     """
     # Step 1: User submits question for 3 council models
@@ -22,7 +22,7 @@ def test_full_manual_council_workflow(client):
     run_id = run["id"]
     conv_id = run["conversation_id"]
 
-    # Step 2: User opens official links, pastes responses into Manual Bridge for ChatGPT, Claude, Gemini
+    # Step 2: Simulate response completion for ChatGPT, Claude, Gemini
     for resp in run["responses"]:
         client.post(f"/api/discussions/{run_id}/responses", json={
             "response_id": resp["id"],

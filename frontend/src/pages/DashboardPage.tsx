@@ -59,7 +59,7 @@ export const DashboardPage: React.FC = () => {
             Multi-AI Discussion & Research Workspace
           </h1>
           <p className="mt-2 text-slate-300 text-sm leading-relaxed">
-            Kelola diskusi, debat komparatif, kritik silang, dan konsensus bersama ChatGPT, Claude, Gemini, serta sumber riset NotebookLM dalam satu antarmuka terpadu.
+            Kelola diskusi, debat komparatif, kritik silang, dan konsensus bersama DeepSeek, Qwen, Meta Llama, Gemini, dan Ollama Lokal dalam satu antarmuka terpadu.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <button
@@ -107,7 +107,7 @@ export const DashboardPage: React.FC = () => {
           </div>
           <div className="text-2xl font-bold text-white">{providers.length} Model</div>
           <p className="text-[11px] text-emerald-400 font-medium mt-1">
-            Mode Manual Bridge Aktif (100% Gratis)
+            Konektor API Otomatis Aktif (Zero-Cost Ready)
           </p>
         </div>
 
@@ -120,7 +120,7 @@ export const DashboardPage: React.FC = () => {
             ${usage?.estimated_total_cost_usd ? usage.estimated_total_cost_usd.toFixed(4) : '0.0000'}
           </div>
           <p className="text-[11px] text-slate-500 mt-1">
-            {usage?.manual_requests || 0} respons via akun gratis
+            {usage?.total_requests || 0} total respons tersimpan
           </p>
         </div>
       </div>
@@ -209,7 +209,7 @@ export const DashboardPage: React.FC = () => {
                       </span>
                     </div>
                     <p className="text-[11px] text-emerald-400 mt-0.5">
-                      {p.api_key_configured ? 'API Key Siap' : 'Mode A: Manual Bridge'}
+                      {p.api_key_configured ? 'API Key Siap' : 'API Key Belum Diisi'}
                     </p>
                   </div>
                   <a

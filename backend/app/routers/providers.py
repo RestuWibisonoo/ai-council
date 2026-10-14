@@ -34,17 +34,17 @@ def update_provider(
     if payload.is_enabled is not None:
         cfg.is_enabled = payload.is_enabled
     if payload.default_mode is not None:
-        if provider_id == "notebooklm" and payload.default_mode == "api":
+        if payload.default_mode == "manual":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NotebookLM hanya beroperasi via Mode Manual Bridge karena tidak menyediakan API publik untuk akun standar pengguna."
+                detail="Mode Manual Bridge telah dihapus. Semua provider beroperasi via API otomatis."
             )
-        if payload.default_mode == "api" and not (payload.api_key or provider_manager.is_api_configured(provider_id)):
+        if provider_id == "notebooklm":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mode API hanya dapat diaktifkan setelah API key dikonfigurasi."
+                detail="NotebookLM tidak didukung karena tidak menyediakan API otomatis."
             )
-        cfg.default_mode = payload.default_mode
+        cfg.default_mode = "api"
     if payload.selected_model is not None:
         cfg.selected_model = payload.selected_model
     if payload.usage_limit_monthly_usd is not None:
@@ -76,7 +76,7 @@ async def test_provider_connection(
     if not test_key:
         return ProviderTestResponse(
             success=False,
-            message="API key belum diisi. Anda tetap dapat menggunakan provider ini melalui Mode Manual Bridge tanpa biaya API."
+            message="API key belum dikonfigurasi untuk provider ini."
         )
 
     model_to_test = payload.model or cfg.selected_model
@@ -105,8 +105,8 @@ async def test_provider_connection(
         adapter = DeepSeekAdapter(api_key=test_key, model=model_to_test)
     else:
         return ProviderTestResponse(
-            success=True,
-            message=f"{cfg.display_name} beroperasi via antarmuka web resmi (Manual Bridge). Akses terverifikasi."
+            success=False,
+            message=f"Provider {cfg.display_name} belum memiliki adapter API yang didukung."
         )
 
     success, msg = await adapter.test_connection()

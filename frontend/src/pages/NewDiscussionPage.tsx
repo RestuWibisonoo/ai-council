@@ -39,7 +39,6 @@ export const NewDiscussionPage: React.FC = () => {
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
 
   const [catalogModels, setCatalogModels] = useState<CatalogModel[]>([]);
-  const [providers, setProviders] = useState<ProviderConfig[]>([]);
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [activeFamilyFilter, setActiveFamilyFilter] = useState<string>('all');
   const [isRefreshingCatalog, setIsRefreshingCatalog] = useState(false);
@@ -48,12 +47,10 @@ export const NewDiscussionPage: React.FC = () => {
 
   const loadData = async () => {
     try {
-      const [provs, docs, catalog] = await Promise.all([
-        api.getProviders().catch(() => []),
+      const [docs, catalog] = await Promise.all([
         api.getDocuments().catch(() => []),
         api.getModelsCatalog().catch(() => []),
       ]);
-      setProviders(provs);
       setDocuments(docs);
       setCatalogModels(catalog);
     } catch (err) {
@@ -247,7 +244,7 @@ export const NewDiscussionPage: React.FC = () => {
                 <h3 className="font-bold text-sm text-white">Research Workspace</h3>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                Diskusi terstruktur dengan integrasi kutipan dokumen PDF lokal dan catatan NotebookLM.
+                Diskusi terstruktur dengan integrasi kutipan dokumen PDF lokal dan catatan riset terpadu.
               </p>
             </div>
           </div>
@@ -395,40 +392,6 @@ export const NewDiscussionPage: React.FC = () => {
                 </div>
               );
             })}
-          </div>
-
-          {/* Standard Web Bridge Providers (ChatGPT / Claude / NotebookLM) */}
-          <div className="mt-4 pt-3 border-t border-slate-800/60">
-            <span className="text-[11px] font-semibold text-slate-400 block mb-2">
-              Atau gunakan Mode Manual Bridge (ChatGPT, Claude, NotebookLM):
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {providers.map((p) => {
-                const isSelected = selectedModels.includes(p.id);
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => toggleModel(p.id)}
-                    className={`p-2.5 rounded-xl border cursor-pointer transition flex items-center justify-between ${
-                      isSelected
-                        ? 'bg-slate-900 border-emerald-500/80'
-                        : 'bg-slate-950/40 border-slate-800/60 opacity-60 hover:opacity-100'
-                    }`}
-                  >
-                    <span className="text-xs font-medium text-slate-200">{p.display_name}</span>
-                    <div
-                      className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition ${
-                        isSelected
-                          ? 'bg-emerald-500 border-emerald-500 text-slate-950'
-                          : 'border-slate-700 bg-slate-800'
-                      }`}
-                    >
-                      {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         </div>
 

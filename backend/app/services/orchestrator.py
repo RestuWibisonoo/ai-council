@@ -51,6 +51,9 @@ class Orchestrator:
             provider_cfg = db.query(ProviderConfiguration).filter_by(id=provider).first()
             model_id = provider_cfg.selected_model if provider_cfg else provider
 
+        if provider == "notebooklm":
+            raise ValueError("NotebookLM tidak didukung karena tidak menyediakan API otomatis.")
+
         provider_cfg = db.query(ProviderConfiguration).filter_by(id=provider).first()
         is_api = bool(
             (provider_cfg and provider_cfg.default_mode == "api") or
@@ -127,15 +130,7 @@ class Orchestrator:
         # 3. Create DiscussionRun
         stage = "initial_analysis" if mode == "debate" else "parallel_analysis"
 
-        # Check if all providers are manual
-        all_manual = True
-        for raw_item in selected_providers:
-            part = cls.parse_participant(raw_item, db)
-            if part["is_api"]:
-                all_manual = False
-                break
-
-        initial_status = "in_progress" if (auto_run and mode == "debate" and not all_manual) else "awaiting_input"
+        initial_status = "in_progress" if (auto_run and mode == "debate") else "awaiting_input"
 
         run = DiscussionRun(
             conversation_id=conv.id,
@@ -204,7 +199,7 @@ class Orchestrator:
                 provider=pid,
                 model_id=model_id,
                 stage=stage,
-                integration_mode="api" if is_api else "manual",
+                integration_mode="api",
                 prompt_used=prompt,
                 content="",
                 status="pending"
@@ -212,14 +207,13 @@ class Orchestrator:
             db.add(resp)
             db.flush()
 
-            if is_api:
-                api_tasks.append((resp.id, pid, model_id, prompt))
+            api_tasks.append((resp.id, pid, model_id, prompt))
 
         db.commit()
         db.refresh(run)
 
         # 6. Execution routing
-        if mode == "debate" and auto_run and not all_manual:
+        if mode == "debate" and auto_run:
             try:
                 loop = asyncio.get_running_loop()
                 task = loop.create_task(
@@ -346,19 +340,22 @@ class Orchestrator:
 
                     current_stage = run.current_stage
 
+                    active_round = db.query(DiscussionRound).filter_by(
+                        run_id=run.id, round_number=run.current_round
+                    ).first()
+                    round_id_filter = active_round.id if active_round else None
+
                     pending_responses = db.query(ModelResponse).filter_by(
                         run_id=run.id,
+                        round_id=round_id_filter,
                         stage=current_stage,
                         status="pending"
                     ).all()
 
-                    tasks_to_run = []
-                    has_manual_pending = False
-                    for r in pending_responses:
-                        if r.integration_mode == "api":
-                            tasks_to_run.append((r.id, r.provider, r.model_id or r.provider, r.prompt_used))
-                        else:
-                            has_manual_pending = True
+                    tasks_to_run = [
+                        (r.id, r.provider, r.model_id or r.provider, r.prompt_used)
+                        for r in pending_responses
+                    ]
 
                 if tasks_to_run:
                     with cls.get_db_session() as db:
@@ -373,26 +370,25 @@ class Orchestrator:
                         zero_cost_mode=zero_cost_mode
                     )
 
-                if has_manual_pending:
-                    with cls.get_db_session() as db:
-                        run = db.query(DiscussionRun).filter_by(id=run_id).first()
-                        if run and run.status != "stopped":
-                            run.status = "awaiting_input"
-                            db.commit()
-                    break
-
                 with cls.get_db_session() as db:
                     run = db.query(DiscussionRun).filter_by(id=run_id).first()
                     if not run or run.status == "stopped":
                         break
 
+                    active_round = db.query(DiscussionRound).filter_by(
+                        run_id=run.id, round_number=run.current_round
+                    ).first()
+                    round_id_filter = active_round.id if active_round else None
+
                     completed_count = db.query(ModelResponse).filter_by(
                         run_id=run.id,
+                        round_id=round_id_filter,
                         stage=current_stage,
                         status="completed"
                     ).count()
                     total_count = db.query(ModelResponse).filter_by(
                         run_id=run.id,
+                        round_id=round_id_filter,
                         stage=current_stage
                     ).count()
 
@@ -546,7 +542,7 @@ class Orchestrator:
                 synth_resp.status = "failed"
                 synth_resp.error_message = (
                     "Tidak ada model moderator bebas biaya yang terverifikasi untuk sintesis otomatis dalam Zero-Cost Mode. "
-                    "Sesi dialihkan ke awaiting_input agar Anda dapat memasukkan sintesis manual atau mengonfigurasi API model gratis."
+                    "Sesi dialihkan ke awaiting_input agar Anda dapat mengonfigurasi API model gratis."
                 )
                 run.status = "awaiting_input"
                 db.commit()
@@ -823,7 +819,7 @@ class Orchestrator:
                     provider=pid,
                     model_id=model_id,
                     stage="initial_analysis",
-                    integration_mode="api" if is_api else "manual",
+                    integration_mode="api",
                     prompt_used=prompt,
                     content="",
                     status="pending"
@@ -916,7 +912,7 @@ class Orchestrator:
                         provider=r.provider,
                         model_id=r.model_id,
                         stage="cross_critique",
-                        integration_mode="api" if is_api else "manual",
+                        integration_mode="api",
                         prompt_used=critique_prompt,
                         content="",
                         status="pending"
@@ -926,8 +922,14 @@ class Orchestrator:
             db.commit()
 
         elif current_stage == "cross_critique":
+            active_round = db.query(DiscussionRound).filter_by(
+                run_id=run.id, round_number=run.current_round
+            ).first()
             critique_responses = db.query(ModelResponse).filter_by(
-                run_id=run.id, stage="cross_critique", status="completed"
+                run_id=run.id,
+                round_id=active_round.id if active_round else None,
+                stage="cross_critique",
+                status="completed"
             ).all()
             if not critique_responses:
                 raise ValueError(
@@ -935,17 +937,29 @@ class Orchestrator:
                 )
 
             run.current_stage = "rebuttal"
-            active_round = db.query(DiscussionRound).filter_by(
-                run_id=run.id, round_number=run.current_round
-            ).first()
             if active_round:
                 active_round.stage = "rebuttal"
 
-            initial_responses = db.query(ModelResponse).filter_by(
-                run_id=run.id, stage="initial_analysis", status="completed"
-            ).all()
+            if run.current_round > 1:
+                prev_round = db.query(DiscussionRound).filter_by(
+                    run_id=run.id, round_number=run.current_round - 1
+                ).first()
+                base_responses = db.query(ModelResponse).filter_by(
+                    run_id=run.id,
+                    round_id=prev_round.id if prev_round else None,
+                    stage="rebuttal",
+                    status="completed"
+                ).all()
+                if not base_responses:
+                    base_responses = db.query(ModelResponse).filter_by(
+                        run_id=run.id, stage="initial_analysis", status="completed"
+                    ).all()
+            else:
+                base_responses = db.query(ModelResponse).filter_by(
+                    run_id=run.id, stage="initial_analysis", status="completed"
+                ).all()
 
-            for r in initial_responses:
+            for r in base_responses:
                 critiques_for_me = "\n\n".join([
                     f"[{c.provider} ({c.model_id or 'manual'})]: {c.content}"
                     for c in critique_responses if not (c.provider == r.provider and c.model_id == r.model_id)
@@ -984,7 +998,7 @@ class Orchestrator:
                         provider=r.provider,
                         model_id=r.model_id,
                         stage="rebuttal",
-                        integration_mode="api" if is_api else "manual",
+                        integration_mode="api",
                         prompt_used=rebuttal_prompt,
                         content="",
                         status="pending"
@@ -994,8 +1008,14 @@ class Orchestrator:
             db.commit()
 
         elif current_stage == "rebuttal":
+            active_round = db.query(DiscussionRound).filter_by(
+                run_id=run.id, round_number=run.current_round
+            ).first()
             rebuttal_responses = db.query(ModelResponse).filter_by(
-                run_id=run.id, stage="rebuttal", status="completed"
+                run_id=run.id,
+                round_id=active_round.id if active_round else None,
+                stage="rebuttal",
+                status="completed"
             ).all()
             if not rebuttal_responses:
                 raise ValueError(
@@ -1012,6 +1032,42 @@ class Orchestrator:
                     status="in_progress"
                 )
                 db.add(new_round)
+                db.flush()
+
+                resp_data = [
+                    {"provider": f"{r.provider} ({r.model_id or 'manual'})", "content": r.content}
+                    for r in rebuttal_responses
+                ]
+
+                for r in rebuttal_responses:
+                    critique_prompt = PromptBuilder.build_critique_prompt(
+                        query=run.query,
+                        reviewer_provider=f"{r.provider} ({r.model_id or 'manual'})",
+                        all_responses=resp_data,
+                        round_number=run.current_round
+                    )
+
+                    provider_cfg = db.query(ProviderConfiguration).filter_by(id=r.provider).first()
+                    is_api = bool(
+                        (provider_cfg and provider_cfg.default_mode == "api") or
+                        provider_manager.is_api_configured(r.provider) or
+                        r.provider in ("openrouter", "ollama") or
+                        r.integration_mode == "api"
+                    )
+
+                    critique_resp = ModelResponse(
+                        run_id=run.id,
+                        round_id=new_round.id,
+                        provider=r.provider,
+                        model_id=r.model_id,
+                        stage="cross_critique",
+                        integration_mode="api",
+                        prompt_used=critique_prompt,
+                        content="",
+                        status="pending"
+                    )
+                    db.add(critique_resp)
+
                 db.commit()
             else:
                 run.current_stage = "final_synthesis"

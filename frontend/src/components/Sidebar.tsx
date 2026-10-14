@@ -100,12 +100,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ providersStatus = [] }) => {
           </div>
           <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800/60 text-slate-300">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-            <span className="truncate">NotebookLM</span>
+            <span className="truncate">DeepSeek</span>
           </div>
         </div>
         <div className="mt-3 pt-2.5 border-t border-slate-800/50 flex items-center justify-between text-[11px] text-slate-400">
           <span>Mode Utama:</span>
-          <span className="text-emerald-400 font-medium">Manual Bridge</span>
+          <span className="text-emerald-400 font-medium">API Multi-Council</span>
         </div>
       </div>
     </aside>

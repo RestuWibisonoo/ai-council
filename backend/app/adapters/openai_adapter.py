@@ -29,7 +29,7 @@ class OpenAIAdapter(BaseAIAdapter):
             return AdapterResult(
                 content="",
                 model_id=self.model or self.DEFAULT_MODEL,
-                error="OpenAI API key belum dikonfigurasi. Silakan atur API key di Pengaturan Provider atau gunakan Mode Manual Bridge."
+                error="OpenAI API key belum dikonfigurasi. Silakan atur API key di Pengaturan Provider atau file .env."
             )
 
         model_name = self.model or self.DEFAULT_MODEL

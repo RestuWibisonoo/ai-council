@@ -1,6 +1,6 @@
 # AI Council — Free Multi-Provider AI Debate Platform & Research Workspace
 
-AI Council adalah platform kolaboratif dan ruang penelitian terbuka yang memungkinkan Anda menjalankan **Debat Multi-AI Otomatis dalam 1-Klik** menggunakan model-model AI gratis atau berkuota gratis dari berbagai keluarga (**DeepSeek, Qwen / Alibaba, Meta Llama, GLM, Ollama Lokal, Google Gemini, Anthropic Claude, dan OpenAI ChatGPT**) serta integrasi sumber riset **NotebookLM** dalam satu antarmuka terpadu.
+AI Council adalah platform kolaboratif dan ruang penelitian terbuka yang memungkinkan Anda menjalankan **Debat Multi-AI Otomatis dalam 1-Klik** menggunakan model-model AI gratis atau berkuota gratis dari berbagai keluarga (**DeepSeek, Qwen / Alibaba, Meta Llama, GLM, Ollama Lokal, Google Gemini, Anthropic Claude, dan OpenAI ChatGPT**) dalam satu antarmuka terpadu.
 
 Aplikasi ini dirancang khusus dengan **Zero-Cost Mode** aktif secara default, memastikan Anda tidak pernah mengeluarkan biaya tagihan API yang tidak disengaja.
 
@@ -24,7 +24,7 @@ Aplikasi ini dirancang khusus dengan **Zero-Cost Mode** aktif secara default, me
    - **Alibaba Cloud Model Studio (DashScope)**: Adapter resmi Qwen langsung (`DASHSCOPE_API_KEY`).
    - **DeepSeek API Direct**: Adapter resmi DeepSeek (`DEEPSEEK_API_KEY`) dengan proteksi Zero-Cost Mode.
    - **Ollama Local**: Eksekusi model lokal tanpa internet (`http://localhost:11434`), 100% privat dan gratis.
-   - **Manual Bridge (Web UI)**: Eksekusi manual web ChatGPT, Claude, Gemini, dan NotebookLM via antarmuka web gratis tanpa API key.
+   - **Official API Connectors**: Konektor API langsung untuk OpenAI (ChatGPT), Anthropic (Claude), dan Google Gemini.
 4. **Isolasi Kegagalan & Concurrency**:
    - Pemanggilan model dieksekusi secara asinkron dan paralel dengan batas concurrency yang aman.
    - Kegagalan salah satu model (misal: rate limit 429 atau kuota habis) tidak menggagalkan peserta lain yang masih berhasil.
@@ -188,14 +188,9 @@ MAX_TOKENS_PER_RESPONSE=2048
 
 ---
 
-## 7. Auto Copy-Paste Bridge (Playwright Lokal)
+## 7. Arsitektur Otomasi Penuh (Zero-Cost & Direct API)
 
-Bridge opsional ini membuka browser Chromium yang terlihat dan mengisi prompt ke antarmuka web ChatGPT, Gemini, Claude, atau NotebookLM:
-```bash
-pip install -r backend/requirements.txt
-python -m playwright install chromium
-```
-Login manual satu kali di jendela peramban. AI Council tidak pernah mengambil cookie atau membypass otentikasi.
+AI Council kini beroperasi 100% otomatis tanpa memerlukan mekanisme Manual Bridge. Debat antarmodel, kritik silang, sanggahan, dan sintesis moderator dieksekusi secara otonom melalui API gratis (OpenRouter Free Tier, Ollama Lokal) maupun API resmi terkonfigurasi.
 
 ---
 
@@ -210,7 +205,7 @@ pytest -v backend/tests
 ```
 
 **Hasil Pengujian:**
-- Total **45 test lulus (45 passed, 0 failed)** dalam ~1.8 detik.
+- Seluruh unit & integration test lulus tanpa error.
 
 ---
 
@@ -222,18 +217,18 @@ pytest -v backend/tests
 | `POST` | `/api/discussions` | Membuat sesi diskusi/debat baru (mendukung `auto_run`) |
 | `GET` | `/api/discussions/{run_id}` | Mengambil detail dan respons sesi diskusi |
 | `POST` | `/api/discussions/{run_id}/run-auto` | Memicu eksekusi otomatis tahapan debat di background |
-| `POST` | `/api/discussions/{run_id}/responses` | Mengirim respons manual (Manual Bridge) |
-| `POST` | `/api/discussions/{run_id}/advance` | Memajukan tahapan debat manual (Critique &rarr; Rebuttal &rarr; Synthesis) |
+| `POST` | `/api/discussions/{run_id}/responses` | Memperbarui respons model (kompatibilitas riwayat lama) |
+| `POST` | `/api/discussions/{run_id}/advance` | Memajukan tahapan debat (Critique &rarr; Rebuttal &rarr; Synthesis) |
 | `POST` | `/api/discussions/{run_id}/synthesis` | Menyimpan sintesis moderator 8 poin |
 | `POST` | `/api/discussions/{run_id}/stop` | Menghentikan sesi diskusi |
 | `GET` | `/api/discussions/{run_id}/export` | Mengunduh laporan hasil dalam format Markdown & Plain Text |
 | `GET` | `/api/providers/catalog/models` | Mengambil katalog dinamis model gratis & verifikasi harga $0.00 |
 | `GET` | `/api/providers` | Konfigurasi provider dan status API key |
-| `PUT` | `/api/providers/{id}` | Memperbarui mode (manual/api), model, dan batas biaya |
+| `PUT` | `/api/providers/{id}` | Memperbarui model dan batas biaya provider API |
 | `POST` | `/api/documents/upload` | Mengunggah PDF/TXT dan mengekstrak teks via PyMuPDF |
 | `GET` | `/api/documents` | Daftar dokumen penelitian |
 | `POST` | `/api/documents/search` | Pencarian teks dan potongan dokumen relevan |
-| `GET` | `/api/usage/summary` | Audit pemisahan penggunaan manual (Rp 0) vs API |
+| `GET` | `/api/usage/summary` | Audit pelacakan penggunaan token dan estimasi biaya API |
 
 ---
 
